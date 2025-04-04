@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
 import { csrf } from 'hono/csrf';
-import { except } from 'hono/combine';
+import { cors } from 'hono/cors';
 import auth from './middleware/auth';
 import signup from './routes/signup';
 import login from './routes/login';
@@ -10,9 +10,10 @@ import logout from './routes/logout';
 
 const app = new Hono();
 
-app.use(except('/logout', csrf()));
+app.use(csrf({ origin: Bun.env.FRONTEND_URL || '' }));
 app.use(secureHeaders());
 app.use(auth);
+app.use('/*', cors({ origin: Bun.env.FRONTEND_URL || '', credentials: true }));
 
 app.route('/', signup);
 app.route('/', login);
