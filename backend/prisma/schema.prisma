@@ -12,6 +12,29 @@ model User {
   username String @unique
   password String
   sessions Session[]
+  
+  sentRequests FriendRequest[] @relation("SentRequests")
+  receivedRequests FriendRequest[] @relation("ReceivedRequests")
+}
+
+model FriendRequest {
+  id String @id
+  senderId String
+  receiverId String
+  status FriendRequestStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+
+  sender User @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 model Session {

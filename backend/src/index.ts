@@ -7,6 +7,7 @@ import signup from './routes/signup';
 import login from './routes/login';
 import users from './routes/users';
 import logout from './routes/logout';
+import friends from './routes/friends';
 
 const app = new Hono();
 
@@ -19,6 +20,7 @@ app.route('/', signup);
 app.route('/', login);
 app.route('/', users);
 app.route('/', logout);
+app.route('/friends', friends);
 
 export default {
   port: Bun.env.PORT || 3000,
