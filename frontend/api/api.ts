@@ -54,3 +54,7 @@ export const logout = async () => {
 export const getUser = async () => {
   return await axios.get(`${API_URL}/users/@me`, { withCredentials: true }).then((res) => res.data);
 };
+
+export const getFriends = async () => {
+  return await axios.get(`${API_URL}/friends`, { withCredentials: true }).then((res) => res.data);
+};
