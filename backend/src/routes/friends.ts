@@ -97,6 +97,20 @@ app.post('/respondToRequest', async (c) => {
         acceptedAt: new Date(),
       },
     });
+
+    await prisma.channel.create({
+      data: {
+        id: friendRequest.id,
+      },
+    });
+
+    await prisma.channelMember.createMany({
+      data: [
+        { id: generateId(), channelId: friendRequest.id, userId: friendRequest.senderId },
+        { id: generateId(), channelId: friendRequest.id, userId: friendRequest.receiverId },
+      ],
+      skipDuplicates: true,
+    });
   }
 
   return c.text('Friend request responded to', 200);

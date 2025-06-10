@@ -4,15 +4,8 @@ import { getFriends } from '@/api/api';
 import { FriendsList } from '@/components/FriendsList';
 import Loader from '@/components/Loader';
 import { useQuery } from '@tanstack/react-query';
-import { notFound, useParams } from 'next/navigation';
 
-export default function Channels() {
-  const params = useParams();
-
-  if (decodeURIComponent(String(params.slug)) !== '@me') {
-    notFound();
-  }
-
+export default function Me() {
   const { isPending } = useQuery({
     queryKey: ['friends'],
     queryFn: getFriends,

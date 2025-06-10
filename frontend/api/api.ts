@@ -58,3 +58,7 @@ export const getUser = async () => {
 export const getFriends = async () => {
   return await axios.get(`${API_URL}/friends`, { withCredentials: true }).then((res) => res.data);
 };
+
+export const getMessages = async (id: string) => {
+  return await axios.get(`${API_URL}/channels/${id}/messages`, { withCredentials: true }).then((res) => res.data);
+};

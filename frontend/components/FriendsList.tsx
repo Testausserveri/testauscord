@@ -28,7 +28,7 @@ export function FriendsList() {
 
         <div className="gap-1 flex flex-col">
           {data?.map((friend: Friend) => (
-            <FriendCard key={friend.id} name={friend.friend.username} id={friend.friend.id} avatar="" />
+            <FriendCard key={friend.id} name={friend.friend.username} id={friend.id} avatar="" />
           ))}
         </div>
       </div>
