@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { createSession, generateSessionToken } from '../auth/session';
 import { createSessionTokenCookie } from '../auth/cookie';
 
-const prisma = new PrismaClient();
 const app = new Hono();
 
 app.post('/login', async (c) => {

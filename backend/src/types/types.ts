@@ -1,4 +1,4 @@
-import type { User, Session } from '@prisma/client';
+import type { User, Session } from '../generated/prisma/client';
 
 export type Variables = {
   user: User | null;

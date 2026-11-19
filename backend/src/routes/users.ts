@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
-import { PrismaClient } from '@prisma/client';
 import type { Variables } from '../types/types';
+import { prisma } from '../db';
 
-const prisma = new PrismaClient();
 const app = new Hono<{ Variables: Variables }>();
 
 app.get('/users/:id', async (c) => {

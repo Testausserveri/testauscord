@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
-import { PrismaClient } from '@prisma/client';
 import type { Variables } from '../types/types';
-import { FriendRequestStatus } from '@prisma/client';
+import { FriendRequestStatus } from '../generated/prisma/client';
 import { generateId } from '../utils/utils';
+import { prisma } from '../db';
 
-const prisma = new PrismaClient();
 const app = new Hono<{ Variables: Variables }>();
 
 app.post('/sendRequest', async (c) => {
@@ -106,8 +105,16 @@ app.post('/respondToRequest', async (c) => {
 
     await prisma.channelMember.createMany({
       data: [
-        { id: generateId(), channelId: friendRequest.id, userId: friendRequest.senderId },
-        { id: generateId(), channelId: friendRequest.id, userId: friendRequest.receiverId },
+        {
+          id: generateId(),
+          channelId: friendRequest.id,
+          userId: friendRequest.senderId,
+        },
+        {
+          id: generateId(),
+          channelId: friendRequest.id,
+          userId: friendRequest.receiverId,
+        },
       ],
       skipDuplicates: true,
     });

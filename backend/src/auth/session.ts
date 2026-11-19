@@ -1,10 +1,8 @@
-import type { User, Session } from '@prisma/client';
-import { PrismaClient } from '@prisma/client';
+import type { User, Session } from '../generated/prisma/client';
+import { prisma } from '../db';
 import { encodeBase32LowerCaseNoPadding, encodeHexLowerCase } from '@oslojs/encoding';
 import { sha256 } from '@oslojs/crypto/sha2';
 import crypto from 'node:crypto';
-
-const prisma = new PrismaClient();
 
 export const generateSessionToken = (): string => {
   const bytes = new Uint8Array(20);

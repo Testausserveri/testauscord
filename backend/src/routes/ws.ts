@@ -1,15 +1,15 @@
+import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { createBunWebSocket } from 'hono/bun';
-import type { ContextData, Message, Variables } from '../types/types';
-import type { ServerWebSocket } from 'bun';
 import { z } from 'zod';
-import { FriendRequestStatus, PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
+import { FriendRequestStatus } from '../generated/prisma/client';
+import type { ContextData, Variables } from '../types/types';
 import { generateId } from '../utils/utils';
 
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 
 const app = new Hono<{ Variables: Variables }>();
-const prisma = new PrismaClient();
 
 const server = Bun.serve({
   fetch: app.fetch,
@@ -70,7 +70,12 @@ app.get(
             const serverId = data.data.serverId;
 
             if (context.subscribedChannels.has(channelId)) {
-              return ws.send(JSON.stringify({ type: 'error', message: 'Already subscribed' }));
+              return ws.send(
+                JSON.stringify({
+                  type: 'error',
+                  message: 'Already subscribed',
+                }),
+              );
             }
 
             if (serverId == null) {
@@ -145,7 +150,10 @@ app.get(
                   channelId: message.channelId,
                   serverId: serverId,
                   content: message.content,
-                  sender: { id: message.senderId, username: message.sender.username },
+                  sender: {
+                    id: message.senderId,
+                    username: message.sender.username,
+                  },
                   createdAt: message.createdAt,
                 },
               };
@@ -160,7 +168,7 @@ app.get(
         const ws = ctx.raw as ServerWebSocket;
       },
     };
-  })
+  }),
 );
 
 export default app;
