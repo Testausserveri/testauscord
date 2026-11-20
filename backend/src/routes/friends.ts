@@ -1,10 +1,15 @@
 import { Hono } from 'hono';
 import type { Variables } from '../types/types';
-import { FriendRequestStatus } from '../generated/prisma/client';
+import { ChannelType } from '../generated/prisma/client';
 import { generateId } from '../utils/utils';
 import { prisma } from '../db';
+import { directChannelKey, friendPair } from '../services/directMessages';
 
 const app = new Hono<{ Variables: Variables }>();
+
+const isValidUsername = (value: unknown): value is string => {
+  return typeof value === 'string' && value.length >= 3 && value.length <= 31 && /^[a-z0-9_-]+$/.test(value);
+};
 
 app.post('/sendRequest', async (c) => {
   if (!c.get('user') || !c.get('session')) {
@@ -13,7 +18,7 @@ app.post('/sendRequest', async (c) => {
 
   const { target } = await c.req.json();
 
-  if (typeof target !== 'string' || target.length < 3 || target.length > 31 || !/^[a-z0-9_-]+$/.test(target)) {
+  if (!isValidUsername(target)) {
     return c.text('Invalid username', 400);
   }
 
@@ -29,21 +34,30 @@ app.post('/sendRequest', async (c) => {
     return c.text('User not found', 404);
   }
 
-  const existingFriendship = await prisma.friendRequest.findUnique({
+  const pair = friendPair(c.get('user')!.id, targetUser.id);
+  const existingFriendship = await prisma.friendship.findUnique({
+    where: { userAId_userBId: pair },
+  });
+
+  if (existingFriendship) {
+    return c.text('You are already friends with this user', 409);
+  }
+
+  const pendingRequest = await prisma.friendRequest.findFirst({
     where: {
-      senderId_receiverId: {
-        senderId: c.get('user')!.id,
-        receiverId: targetUser.id,
-      },
+      OR: [
+        { senderId: c.get('user')!.id, receiverId: targetUser.id },
+        { senderId: targetUser.id, receiverId: c.get('user')!.id },
+      ],
     },
   });
 
-  if (existingFriendship && existingFriendship.status === FriendRequestStatus.PENDING) {
-    return c.text('You have already sent a friend request to this user', 409);
-  }
+  if (pendingRequest) {
+    if (pendingRequest.senderId === c.get('user')!.id) {
+      return c.text('You have already sent a friend request to this user', 409);
+    }
 
-  if (existingFriendship && existingFriendship.status === FriendRequestStatus.ACCEPTED) {
-    return c.text('You are already friends with this user', 409);
+    return c.text('This user has already sent you a friend request', 409);
   }
 
   await prisma.friendRequest.create({
@@ -64,7 +78,7 @@ app.post('/respondToRequest', async (c) => {
 
   const { requestId, accepted } = await c.req.json();
 
-  if (typeof requestId !== 'string' || /^\d+$/.test(requestId) === false) {
+  if (typeof requestId !== 'string' || requestId.length === 0) {
     return c.text('Invalid request id', 400);
   }
 
@@ -80,45 +94,57 @@ app.post('/respondToRequest', async (c) => {
     return c.text('Friend request not found', 404);
   }
 
-  if (friendRequest.status !== FriendRequestStatus.PENDING) {
-    return c.text('Friend request has already been responded to', 409);
-  }
-
-  if (accepted !== true) {
+  if (!accepted) {
     await prisma.friendRequest.delete({
       where: { id: requestId },
     });
-  } else if (accepted === true) {
-    await prisma.friendRequest.update({
-      where: { id: requestId },
-      data: {
-        status: FriendRequestStatus.ACCEPTED,
-        acceptedAt: new Date(),
+
+    return c.text('Friend request responded to', 200);
+  }
+
+  const pair = friendPair(friendRequest.senderId, friendRequest.receiverId);
+  const dmKey = directChannelKey(friendRequest.senderId, friendRequest.receiverId);
+
+  await prisma.$transaction(async (tx) => {
+    const channel = await tx.channel.upsert({
+      where: { dmKey },
+      create: {
+        id: generateId(),
+        type: ChannelType.DM,
+        dmKey,
       },
+      update: {},
     });
 
-    await prisma.channel.create({
-      data: {
-        id: friendRequest.id,
-      },
-    });
-
-    await prisma.channelMember.createMany({
+    await tx.channelMember.createMany({
       data: [
         {
           id: generateId(),
-          channelId: friendRequest.id,
+          channelId: channel.id,
           userId: friendRequest.senderId,
         },
         {
           id: generateId(),
-          channelId: friendRequest.id,
+          channelId: channel.id,
           userId: friendRequest.receiverId,
         },
       ],
       skipDuplicates: true,
     });
-  }
+
+    await tx.friendship.upsert({
+      where: { userAId_userBId: pair },
+      create: {
+        id: generateId(),
+        ...pair,
+      },
+      update: {},
+    });
+
+    await tx.friendRequest.delete({
+      where: { id: requestId },
+    });
+  });
 
   return c.text('Friend request responded to', 200);
 });
@@ -130,7 +156,7 @@ app.post('/cancelRequest', async (c) => {
 
   const { requestId } = await c.req.json();
 
-  if (typeof requestId !== 'string' || /^\d+$/.test(requestId) === false) {
+  if (typeof requestId !== 'string' || requestId.length === 0) {
     return c.text('Invalid request id', 400);
   }
 
@@ -140,10 +166,6 @@ app.post('/cancelRequest', async (c) => {
 
   if (!friendRequest || friendRequest.senderId !== c.get('user')!.id) {
     return c.text('Friend request not found', 404);
-  }
-
-  if (friendRequest.status !== FriendRequestStatus.PENDING) {
-    return c.text('Friend request has already been accepted', 409);
   }
 
   await prisma.friendRequest.delete({
@@ -160,37 +182,47 @@ app.post('/remove', async (c) => {
 
   const { target } = await c.req.json();
 
-  if (typeof target !== 'string' || target.length < 3 || target.length > 31 || !/^[a-z0-9_-]+$/.test(target)) {
+  if (!isValidUsername(target)) {
     return c.text('Invalid username', 400);
   }
 
   const targetUser = await prisma.user.findUnique({
     where: { username: target },
-    select: {
-      id: true,
-    },
+    select: { id: true },
   });
 
   if (!targetUser) {
     return c.text('User not found', 404);
   }
 
-  const existingFriendship = await prisma.friendRequest.findFirst({
-    where: {
-      OR: [
-        { senderId: c.get('user')!.id, receiverId: targetUser.id },
-        { senderId: targetUser.id, receiverId: c.get('user')!.id },
-      ],
-      status: 'ACCEPTED',
-    },
+  const pair = friendPair(c.get('user')!.id, targetUser.id);
+  const friendship = await prisma.friendship.findUnique({
+    where: { userAId_userBId: pair },
   });
 
-  if (!existingFriendship) {
+  if (!friendship) {
     return c.text('You are not friends with this user', 404);
   }
 
-  await prisma.friendRequest.deleteMany({
-    where: { id: existingFriendship.id },
+  const dmKey = directChannelKey(c.get('user')!.id, targetUser.id);
+  const channel = await prisma.channel.findUnique({
+    where: { dmKey },
+    select: { id: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.friendship.delete({
+      where: { id: friendship.id },
+    });
+
+    if (channel) {
+      await tx.channelMember.deleteMany({
+        where: {
+          channelId: channel.id,
+          userId: { in: [c.get('user')!.id, targetUser.id] },
+        },
+      });
+    }
   });
 
   return c.text('Friend removed', 200);
@@ -204,7 +236,6 @@ app.get('/pendingRequests', async (c) => {
   const requests = await prisma.friendRequest.findMany({
     where: {
       receiverId: c.get('user')!.id,
-      status: FriendRequestStatus.PENDING,
     },
     select: {
       id: true,
@@ -229,7 +260,6 @@ app.get('/sentRequests', async (c) => {
   const requests = await prisma.friendRequest.findMany({
     where: {
       senderId: c.get('user')!.id,
-      status: FriendRequestStatus.PENDING,
     },
     select: {
       id: true,
@@ -251,37 +281,51 @@ app.get('/', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const friends = await prisma.friendRequest.findMany({
+  const friendships = await prisma.friendship.findMany({
     where: {
-      OR: [
-        { senderId: c.get('user')!.id, status: FriendRequestStatus.ACCEPTED },
-        { receiverId: c.get('user')!.id, status: FriendRequestStatus.ACCEPTED },
-      ],
+      OR: [{ userAId: c.get('user')!.id }, { userBId: c.get('user')!.id }],
     },
     select: {
       id: true,
-      acceptedAt: true,
-      sender: {
+      userAId: true,
+      userBId: true,
+      createdAt: true,
+      userA: {
         select: {
           id: true,
           username: true,
         },
       },
-      receiver: {
+      userB: {
         select: {
           id: true,
           username: true,
         },
       },
     },
+    orderBy: { createdAt: 'asc' },
   });
 
-  const response = friends.map((entry) => {
-    const friend = entry.sender.id === c.get('user')!.id ? entry.receiver : entry.sender;
+  const dmKeys = friendships.map((entry) => directChannelKey(entry.userAId, entry.userBId));
+  const channels = await prisma.channel.findMany({
+    where: { dmKey: { in: dmKeys } },
+    select: { id: true, dmKey: true },
+  });
+
+  const channelByKey = new Map<string, string>();
+  for (const channel of channels) {
+    if (channel.dmKey) channelByKey.set(channel.dmKey, channel.id);
+  }
+
+  const response = friendships.map((entry) => {
+    const friend = entry.userAId === c.get('user')!.id ? entry.userB : entry.userA;
+    const channelId = channelByKey.get(directChannelKey(entry.userAId, entry.userBId)) ?? '';
 
     return {
-      id: entry.id,
-      friendsSince: entry.acceptedAt,
+      id: channelId,
+      channelId,
+      friendshipId: entry.id,
+      friendsSince: entry.createdAt,
       friend,
     };
   });

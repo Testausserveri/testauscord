@@ -3,8 +3,8 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { FriendRequestStatus } from '../generated/prisma/client';
 import { addConnection, getUserId, isSubscribed, publishToChannel, removeConnection, subscribe, unsubscribe } from '../realtime/connections';
+import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
 
@@ -79,15 +79,7 @@ app.get(
 
             if (isSubscribed(ws, channelId)) return;
 
-            const friendship = await prisma.friendRequest.findUnique({
-              where: {
-                id: channelId,
-                status: FriendRequestStatus.ACCEPTED,
-                OR: [{ senderId: connectionUserId }, { receiverId: connectionUserId }],
-              },
-            });
-
-            if (!friendship) {
+            if (!(await canAccessChannel(connectionUserId, channelId))) {
               sendError(ws, 'Invalid channel');
               return;
             }
@@ -126,15 +118,7 @@ app.get(
               return;
             }
 
-            const friendship = await prisma.friendRequest.findUnique({
-              where: {
-                id: channelId,
-                status: FriendRequestStatus.ACCEPTED,
-                OR: [{ senderId: connectionUserId }, { receiverId: connectionUserId }],
-              },
-            });
-
-            if (!friendship) {
+            if (!(await canAccessChannel(connectionUserId, channelId))) {
               sendError(ws, 'Invalid channel');
               return;
             }

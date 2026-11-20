@@ -22,6 +22,7 @@ app.get('/:id/messages', async (c) => {
       messages: {
         select: {
           id: true,
+          channelId: true,
           createdAt: true,
           content: true,
           sender: {
@@ -47,17 +48,16 @@ app.get('/:id/messages', async (c) => {
     return c.text('Invalid limit', 400);
   }
 
-  if (c.req.query('before') && !/^\d{9}$/.test(c.req.query('before')!)) {
-    return c.text('Invalid before', 400);
-  }
-
   let messages = [...channel.messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   if (c.req.query('before')) {
-    messages = messages.slice(
-      0,
-      messages.findIndex((message) => message.id === c.req.query('before')),
-    );
+    const index = messages.findIndex((message) => message.id === c.req.query('before'));
+
+    if (index === -1) {
+      return c.text('Invalid before', 400);
+    }
+
+    messages = messages.slice(0, index);
   }
 
   if (c.req.query('limit')) {

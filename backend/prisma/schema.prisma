@@ -8,14 +8,26 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ChannelType {
+  DM
+  TEXT
+}
+
+enum MessageFormat {
+  TEXT
+  E2EE
+}
+
 model User {
   id String @id
   username String @unique
   password String
   sessions Session[]
-  
+
   sentRequests FriendRequest[] @relation("SentRequests")
   receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  friendshipsA Friendship[] @relation("FriendshipUserA")
+  friendshipsB Friendship[] @relation("FriendshipUserB")
 
   channelMembers ChannelMember[]
   messages Message[]
@@ -25,9 +37,7 @@ model FriendRequest {
   id String @id
   senderId String
   receiverId String
-  status FriendRequestStatus @default(PENDING)
   createdAt DateTime @default(now())
-  acceptedAt DateTime?
 
   sender User @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
@@ -35,10 +45,17 @@ model FriendRequest {
   @@unique([senderId, receiverId])
 }
 
-enum FriendRequestStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
+model Friendship {
+  id String @id
+  userAId String
+  userBId String
+  createdAt DateTime @default(now())
+
+  userA User @relation("FriendshipUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendshipUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userBId])
 }
 
 model Session {
@@ -51,12 +68,16 @@ model Session {
 
 model Channel {
   id String @id
+  type ChannelType @default(DM)
   name String?
   serverId String?
+  dmKey String? @unique
   createdAt DateTime @default(now())
 
   members ChannelMember[]
   messages Message[]
+
+  @@index([serverId])
 }
 
 model ChannelMember {
@@ -75,8 +96,13 @@ model Message {
   channelId String
   senderId String
   content String
+  format MessageFormat @default(TEXT)
+  clientNonce String?
   createdAt DateTime @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, senderId, clientNonce])
+  @@index([channelId, createdAt, id])
 }
