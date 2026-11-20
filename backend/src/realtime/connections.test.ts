@@ -1,15 +1,24 @@
 import type { ServerWebSocket } from 'bun';
 import { expect, test } from 'bun:test';
-import { addConnection, publishToChannel, removeConnection, subscribe, unsubscribe } from './connections';
+import { HEARTBEAT_TIMEOUT_MS } from './protocol';
+import { addConnection, markAlive, publishToChannel, removeConnection, runHeartbeatSweep, subscribe, unsubscribe } from './connections';
 
 const createSocket = () => {
   const sent: string[] = [];
-  const ws = {
-    readyState: WebSocket.OPEN,
-    send: (payload: string) => sent.push(payload),
-  } as unknown as ServerWebSocket;
+  const closed: number[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN as number,
+    send: (payload: string) => {
+      sent.push(payload);
+      return payload.length;
+    },
+    close: (code: number) => {
+      closed.push(code);
+      socket.readyState = WebSocket.CLOSED;
+    },
+  };
 
-  return { ws, sent };
+  return { ws: socket as unknown as ServerWebSocket, sent, closed };
 };
 
 test('publishes only to subscribed sockets and cleans up', () => {
@@ -38,4 +47,29 @@ test('publishes only to subscribed sockets and cleans up', () => {
 
   removeConnection(a.ws);
   removeConnection(a.ws);
+});
+
+test('sends pings and closes stale connections', () => {
+  const socket = createSocket();
+  addConnection(socket.ws, 'user-heartbeat');
+  const now = Date.now();
+
+  runHeartbeatSweep(now);
+  expect(socket.sent).toHaveLength(1);
+
+  const ping = JSON.parse(socket.sent[0]!);
+  expect(ping.type).toBe('PING');
+  expect(typeof ping.data.nonce).toBe('string');
+
+  markAlive(socket.ws, ping.data.nonce, now + 1);
+  runHeartbeatSweep(now + 50_000);
+  expect(socket.closed).toEqual([]);
+  expect(socket.sent).toHaveLength(2);
+
+  runHeartbeatSweep(now + HEARTBEAT_TIMEOUT_MS + 2);
+
+  expect(socket.closed).toEqual([4008]);
+  expect(socket.sent).toHaveLength(2);
+
+  removeConnection(socket.ws);
 });

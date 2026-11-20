@@ -3,7 +3,8 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { addConnection, getUserId, isSubscribed, publishToChannel, removeConnection, subscribe, unsubscribe } from '../realtime/connections';
+import { addConnection, getUserId, isSubscribed, markAlive, publishToChannel, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
+import { pongFrameSchema } from '../realtime/protocol';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
@@ -49,6 +50,8 @@ app.get(
           return;
         }
 
+        touchConnection(ws);
+
         let data;
         try {
           data = JSON.parse(event.data as string);
@@ -63,6 +66,12 @@ app.get(
         }
 
         switch (data.type) {
+          case 'PONG': {
+            const result = pongFrameSchema.safeParse(data);
+            if (result.success) markAlive(ws, result.data.data.nonce);
+            return;
+          }
+
           case 'SUBSCRIBE': {
             const result = subscribeSchema.safeParse(data.data);
             if (!result.success) {

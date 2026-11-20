@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, ReactNode } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 
 interface WebSocketContextType {
@@ -23,6 +23,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     reconnectInterval: 3000,
     share: true,
   });
+
+  useEffect(() => {
+    if (!lastMessage || readyState !== ReadyState.OPEN) return;
+
+    try {
+      const message = JSON.parse(lastMessage.data as string);
+
+      if (message.type === 'PING' && typeof message.data?.nonce === 'string') {
+        sendMessage(JSON.stringify({ type: 'PONG', data: { nonce: message.data.nonce } }));
+      }
+    } catch {}
+  }, [lastMessage, readyState, sendMessage]);
 
   return <WebSocketContext.Provider value={{ sendMessage, lastMessage, readyState }}>{children}</WebSocketContext.Provider>;
 };
