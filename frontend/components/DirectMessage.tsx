@@ -10,7 +10,7 @@ import Loader from './Loader';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Send } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
 
 const formatTimestamp = (timestamp: string) => {
@@ -72,25 +72,28 @@ export function DirectMessage({ id }: { id: string }) {
   // pages arrive newest first; show them oldest first
   const messages = messagesData ? [...messagesData.pages].reverse().flatMap((page) => page.messages) : undefined;
 
-  const appendMessage = (message: Message) => {
-    queryClient.setQueryData<InfiniteData<MessagesPage>>(['messages', id], (oldData) => {
-      if (!oldData?.pages[0]) return oldData;
-      if (oldData.pages[0].messages.some((existing) => existing.id === message.id)) return oldData;
+  const appendMessage = useCallback(
+    (message: Message) => {
+      queryClient.setQueryData<InfiniteData<MessagesPage>>(['messages', id], (oldData) => {
+        if (!oldData?.pages[0]) return oldData;
+        if (oldData.pages[0].messages.some((existing) => existing.id === message.id)) return oldData;
 
-      return {
-        ...oldData,
-        pages: [{ ...oldData.pages[0], messages: [...oldData.pages[0].messages, message] }, ...oldData.pages.slice(1)],
-      };
-    });
-  };
+        return {
+          ...oldData,
+          pages: [{ ...oldData.pages[0], messages: [...oldData.pages[0].messages, message] }, ...oldData.pages.slice(1)],
+        };
+      });
+    },
+    [id, queryClient],
+  );
 
-  const { sendMessage, lastMessage, readyState } = useWebSocketContext();
+  const { subscribeToChannel, addListener } = useWebSocketContext();
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  };
+  }, []);
 
   const isNearBottom = () => {
     if (!scrollContainerRef.current) return false;
@@ -121,62 +124,33 @@ export function DirectMessage({ id }: { id: string }) {
     });
   };
 
-  useEffect(() => {
-    if (readyState === WebSocket.OPEN) {
-      sendMessage(
-        JSON.stringify({
-          type: 'SUBSCRIBE',
-          data: {
-            channelId: id,
-          },
-        }),
-      );
-    }
-
-    return () => {
-      if (readyState === WebSocket.OPEN) {
-        sendMessage(
-          JSON.stringify({
-            type: 'UNSUBSCRIBE',
-            data: {
-              channelId: id,
-            },
-          }),
-        );
-      }
-    };
-  }, [id, readyState, sendMessage]);
+  useEffect(() => subscribeToChannel(id), [id, subscribeToChannel]);
 
   useEffect(() => {
     setTimeout(() => {
       scrollToBottom();
       setIsUserScrolledUp(false);
     }, 100);
-  }, []);
+  }, [scrollToBottom]);
 
-  useEffect(() => {
-    if (lastMessage !== null) {
-      try {
-        const data = JSON.parse(lastMessage.data);
+  useEffect(
+    () =>
+      addListener((frame) => {
+        if (frame.type !== 'MESSAGE_CREATE') return;
 
-        if (data.type === 'MESSAGE_CREATE' && data.data?.message) {
-          const newMessage: Message = data.data.message;
+        const newMessage = (frame.data as { message?: Message } | undefined)?.message;
+        if (!newMessage || newMessage.channelId !== id) return;
 
-          if (newMessage.channelId !== id) return;
+        appendMessage(newMessage);
 
-          appendMessage(newMessage);
-
-          setTimeout(() => {
-            if (!isUserScrolledUp) {
-              scrollToBottom();
-            }
-          }, 50);
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    }
-  }, [lastMessage, id, queryClient, isUserScrolledUp]);
+        setTimeout(() => {
+          if (!isUserScrolledUp) {
+            scrollToBottom();
+          }
+        }, 50);
+      }),
+    [addListener, id, appendMessage, scrollToBottom, isUserScrolledUp],
+  );
 
   const friend = data?.find((f: Friend) => f.id === id)?.friend;
 
