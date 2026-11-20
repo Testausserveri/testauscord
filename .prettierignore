@@ -1,0 +1,9 @@
+node_modules
+.next
+backend/src/generated
+backend/prisma/migrations
+frontend/public
+frontend/next-env.d.ts
+bun.lock
+dist
+coverage
