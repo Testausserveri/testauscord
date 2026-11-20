@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { unsubscribeUserFromChannel } from '../realtime/connections';
 import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
 
@@ -29,7 +30,14 @@ const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 };
 
-app.post('/', async (c) => {
+const INVITE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+const createInviteCode = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (byte) => INVITE_ALPHABET.charAt(byte % INVITE_ALPHABET.length)).join('');
+};
+
+app.post('/create', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
@@ -71,6 +79,51 @@ app.get('/', async (c) => {
   });
 
   return c.json(servers, 200);
+});
+
+app.post('/join', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ code: z.string().trim().min(1).max(64) }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid invite code', 400);
+  }
+
+  const invite = await prisma.serverInvite.findUnique({
+    where: { code: result.data.code },
+    select: {
+      serverId: true,
+      server: { select: serverSelect },
+    },
+  });
+
+  if (!invite) {
+    return c.text('Invalid invite code', 404);
+  }
+
+  const userId = c.get('user')!.id;
+  const existing = await prisma.serverMember.findUnique({
+    where: { serverId_userId: { serverId: invite.serverId, userId } },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return c.json(invite.server, 200);
+  }
+
+  try {
+    await prisma.serverMember.create({
+      data: { id: generateId(), serverId: invite.serverId, userId },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+  }
+
+  return c.json(invite.server, 201);
 });
 
 app.get('/:id', async (c) => {
@@ -152,6 +205,69 @@ app.post('/:id/channels', async (c) => {
     }
     throw error;
   }
+});
+
+app.post('/:id/invites', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const server = await prisma.server.findFirst({
+    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
+    select: { id: true },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  const invite = await prisma.serverInvite.create({
+    data: {
+      id: generateId(),
+      code: createInviteCode(),
+      serverId: server.id,
+      createdById: c.get('user')!.id,
+    },
+    select: { code: true },
+  });
+
+  return c.json(invite, 201);
+});
+
+app.post('/:id/leave', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const server = await prisma.server.findUnique({
+    where: { id: c.req.param('id') },
+    select: { ownerId: true, channels: { select: { id: true } } },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (server.ownerId === userId) {
+    return c.text('The server owner cannot leave', 400);
+  }
+
+  const membership = await prisma.serverMember.findUnique({
+    where: { serverId_userId: { serverId: c.req.param('id'), userId } },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    return c.text('You are not a member of this server', 403);
+  }
+
+  await prisma.serverMember.delete({ where: { id: membership.id } });
+  for (const channel of server.channels) {
+    unsubscribeUserFromChannel(userId, channel.id);
+  }
+
+  return c.body(null, 204);
 });
 
 export default app;

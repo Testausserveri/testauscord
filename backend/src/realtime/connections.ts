@@ -124,6 +124,15 @@ export const unsubscribe = (ws: ServerWebSocket, channelId: string): void => {
   if (subscribers.size === 0) channelConnections.delete(channelId);
 };
 
+export const unsubscribeUserFromChannel = (userId: string, channelId: string): void => {
+  const subscribers = channelConnections.get(channelId);
+  if (!subscribers) return;
+
+  for (const connection of [...subscribers]) {
+    if (connection.userId === userId) unsubscribe(connection.ws, channelId);
+  }
+};
+
 export const publishToChannel = (channelId: string, payload: string): void => {
   const subscribers = channelConnections.get(channelId);
   if (!subscribers) return;

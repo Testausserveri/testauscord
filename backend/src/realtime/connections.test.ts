@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from 'bun';
 import { expect, test } from 'bun:test';
 import { HEARTBEAT_TIMEOUT_MS } from './protocol';
-import { addConnection, markAlive, publishToChannel, removeConnection, runHeartbeatSweep, subscribe, unsubscribe } from './connections';
+import { addConnection, markAlive, publishToChannel, removeConnection, runHeartbeatSweep, subscribe, unsubscribe, unsubscribeUserFromChannel } from './connections';
 
 const createSocket = () => {
   const sent: string[] = [];
@@ -47,6 +47,31 @@ test('publishes only to subscribed sockets and cleans up', () => {
 
   removeConnection(a.ws);
   removeConnection(a.ws);
+});
+
+test('removes a user from a channel across all their connections', () => {
+  const a1 = createSocket();
+  const a2 = createSocket();
+  const b = createSocket();
+  const channelId = crypto.randomUUID();
+
+  addConnection(a1.ws, 'user-a');
+  addConnection(a2.ws, 'user-a');
+  addConnection(b.ws, 'user-b');
+  subscribe(a1.ws, channelId);
+  subscribe(a2.ws, channelId);
+  subscribe(b.ws, channelId);
+
+  unsubscribeUserFromChannel('user-a', channelId);
+  publishToChannel(channelId, 'event');
+
+  expect(a1.sent).toEqual([]);
+  expect(a2.sent).toEqual([]);
+  expect(b.sent).toEqual(['event']);
+
+  removeConnection(a1.ws);
+  removeConnection(a2.ws);
+  removeConnection(b.ws);
 });
 
 test('sends pings and closes stale connections', () => {

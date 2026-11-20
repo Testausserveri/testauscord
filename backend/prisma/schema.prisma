@@ -34,6 +34,7 @@ model User {
 
   ownedServers Server[] @relation("ServerOwner")
   serverMembers ServerMember[]
+  createdInvites ServerInvite[]
 }
 
 model Server {
@@ -45,6 +46,18 @@ model Server {
   owner User @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members ServerMember[]
   channels Channel[]
+  invites ServerInvite[]
+}
+
+model ServerInvite {
+  id String @id
+  code String @unique
+  serverId String
+  createdById String
+  createdAt DateTime @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
 }
 
 model ServerMember {
