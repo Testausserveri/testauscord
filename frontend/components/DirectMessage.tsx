@@ -90,7 +90,7 @@ export function DirectMessage({ id }: { id: string }) {
           data: {
             channelId: id,
           },
-        })
+        }),
       );
     }
 
@@ -102,7 +102,7 @@ export function DirectMessage({ id }: { id: string }) {
             data: {
               channelId: id,
             },
-          })
+          }),
         );
       }
     };
@@ -120,8 +120,8 @@ export function DirectMessage({ id }: { id: string }) {
       try {
         const data = JSON.parse(lastMessage.data);
 
-        if (data.type === 'MESSAGE_CREATE' && data.data) {
-          const newMessage: Message = data.data;
+        if (data.type === 'MESSAGE_CREATE' && data.data?.message) {
+          const newMessage: Message = data.data.message;
 
           if (newMessage.channelId !== id) return;
 
@@ -162,7 +162,7 @@ export function DirectMessage({ id }: { id: string }) {
             channelId: id,
             content: messageInput.trim(),
           },
-        })
+        }),
       );
 
       setMessageInput('');

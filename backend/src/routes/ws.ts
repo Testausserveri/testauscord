@@ -2,15 +2,16 @@ import { upgradeWebSocket } from '@hono/bun';
 import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { validateSessionToken } from '../auth/session';
 import { prisma } from '../db';
-import { addConnection, getUserId, isSubscribed, markAlive, publishToChannel, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
+import { eventBus } from '../realtime/bus';
+import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
-import { PROTOCOL_VERSION, pongFrameSchema } from '../realtime/protocol';
+import { PROTOCOL_VERSION, type MessageDTO, messageCreateFrame, pongFrameSchema } from '../realtime/protocol';
 import { verifyTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
-import { validateSessionToken } from '../auth/session';
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -167,23 +168,27 @@ app.get(
               },
             });
 
-            const payload = JSON.stringify({
-              type: 'MESSAGE_CREATE',
-              data: {
-                id: message.id,
-                channelId: message.channelId,
-                serverId,
-                content: message.content,
-                sender: {
-                  id: message.senderId,
-                  username: message.sender.username,
-                },
-                createdAt: message.createdAt,
+            const messageDto: MessageDTO = {
+              id: message.id,
+              channelId: message.channelId,
+              content: message.content,
+              format: message.format,
+              sender: {
+                id: message.senderId,
+                username: message.sender.username,
               },
-            });
+              createdAt: message.createdAt.toISOString(),
+            };
 
-            if (!isSubscribed(ws, channelId)) ws.send(payload);
-            publishToChannel(channelId, payload);
+            if (!isSubscribed(ws, channelId)) {
+              ws.send(JSON.stringify(messageCreateFrame(messageDto)));
+            }
+
+            eventBus.publish({
+              type: 'MESSAGE_CREATE',
+              channelId,
+              message: messageDto,
+            });
             return;
           }
         }

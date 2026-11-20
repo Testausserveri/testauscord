@@ -6,17 +6,7 @@ export const HEARTBEAT_TIMEOUT_MS = 75_000;
 export const MAX_FRAME_BYTES = 16 * 1024;
 export const MAX_SUBSCRIPTIONS = 200;
 
-export const ERROR_CODES = [
-  'INVALID_FRAME',
-  'UNAUTHORIZED',
-  'FORBIDDEN',
-  'NOT_FOUND',
-  'RATE_LIMITED',
-  'TOO_MANY_SUBSCRIPTIONS',
-  'UNSUPPORTED_VERSION',
-  'PAYLOAD_TOO_LARGE',
-  'INTERNAL',
-] as const;
+export const ERROR_CODES = ['INVALID_FRAME', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'RATE_LIMITED', 'TOO_MANY_SUBSCRIPTIONS', 'UNSUPPORTED_VERSION', 'PAYLOAD_TOO_LARGE', 'INTERNAL'] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -84,3 +74,8 @@ export type ServerFrame =
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
 export type ServerFrameType = ServerFrame['type'];
+
+export const messageCreateFrame = (message: MessageDTO): ServerFrame => ({
+  type: 'MESSAGE_CREATE',
+  data: { message },
+});
