@@ -14,7 +14,6 @@ const app = new Hono<{ Variables: Variables }>();
 
 const subscribeSchema = z.object({
   channelId: z.string(),
-  serverId: z.string().optional(),
 });
 
 const sendError = (ws: ServerWebSocket, message: string) => {
@@ -94,12 +93,7 @@ app.get(
               return;
             }
 
-            const { channelId, serverId } = result.data;
-
-            if (serverId != null) {
-              sendError(ws, 'Server channels are not implemented yet');
-              return;
-            }
+            const { channelId } = result.data;
 
             if (isSubscribed(ws, channelId)) return;
 

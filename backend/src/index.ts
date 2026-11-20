@@ -11,6 +11,7 @@ import friends from './routes/friends';
 import ws from './routes/ws';
 import channels from './routes/channels';
 import realtime from './routes/realtime';
+import servers from './routes/servers';
 
 const app = new Hono();
 
@@ -27,5 +28,6 @@ app.route('/friends', friends);
 app.route('/', ws);
 app.route('/channels', channels);
 app.route('/realtime', realtime);
+app.route('/servers', servers);
 
 export default app;

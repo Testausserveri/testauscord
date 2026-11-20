@@ -59,20 +59,14 @@ app.get('/:id/messages', async (c) => {
 
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
-    select: {
-      id: true,
-      members: {
-        where: { userId: c.get('user')!.id },
-        select: { id: true },
-      },
-    },
+    select: { id: true },
   });
 
   if (!channel) {
     return c.text('Channel not found', 404);
   }
 
-  if (channel.members.length === 0) {
+  if (!(await canAccessChannel(c.get('user')!.id, channelId))) {
     return c.text('You do not have permission to view this channel', 403);
   }
 
