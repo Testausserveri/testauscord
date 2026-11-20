@@ -4,10 +4,13 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { addConnection, getUserId, isSubscribed, markAlive, publishToChannel, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
-import { pongFrameSchema } from '../realtime/protocol';
+import { isAllowedOrigin } from '../realtime/origin';
+import { PROTOCOL_VERSION, pongFrameSchema } from '../realtime/protocol';
+import { verifyTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
+import { validateSessionToken } from '../auth/session';
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -29,9 +32,29 @@ const sendError = (ws: ServerWebSocket, message: string) => {
 app.get(
   '/ws',
   async (c, next) => {
-    if (!c.get('user') || !c.get('session')) {
-      return c.text('This endpoint requires authentication', 401);
+    if (!isAllowedOrigin(c.req.header('origin'))) {
+      return c.text('Forbidden', 403);
     }
+
+    if (c.req.query('v') !== String(PROTOCOL_VERSION)) {
+      return c.text('Unsupported protocol version', 400);
+    }
+
+    const ticket = c.req.query('ticket');
+    const payload = ticket ? verifyTicket(ticket) : null;
+
+    if (!payload) {
+      return c.text('Unauthorized', 401);
+    }
+
+    const { session, user } = await validateSessionToken(payload.sessionId);
+
+    if (!session || !user || user.id !== payload.userId) {
+      return c.text('Unauthorized', 401);
+    }
+
+    c.set('user', user);
+    c.set('session', session);
     await next();
   },
   upgradeWebSocket(async (c) => {

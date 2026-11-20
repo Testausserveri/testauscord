@@ -10,6 +10,7 @@ import logout from './routes/logout';
 import friends from './routes/friends';
 import ws from './routes/ws';
 import channels from './routes/channels';
+import realtime from './routes/realtime';
 
 const app = new Hono();
 
@@ -25,5 +26,6 @@ app.route('/', logout);
 app.route('/friends', friends);
 app.route('/', ws);
 app.route('/channels', channels);
+app.route('/realtime', realtime);
 
 export default app;

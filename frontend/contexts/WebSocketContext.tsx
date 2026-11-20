@@ -1,6 +1,25 @@
 import React, { createContext, useContext, useEffect, ReactNode } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 
+const getSocketUrl = async () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+  const wsBase = (apiUrl || window.location.origin).replace(/^http/, 'ws');
+
+  const response = await fetch(`${apiUrl}/realtime/ticket`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+
+  if (!response.ok) throw new Error(`Ticket request failed with ${response.status}`);
+
+  const data = (await response.json()) as { ticket?: string };
+  if (!data.ticket) throw new Error('Ticket response missing ticket');
+
+  return `${wsBase}/ws?v=1&ticket=${encodeURIComponent(data.ticket)}`;
+};
+
 interface WebSocketContextType {
   sendMessage: (message: string) => void;
   lastMessage: MessageEvent | null;
@@ -14,14 +33,13 @@ interface WebSocketProviderProps {
 }
 
 export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }) => {
-  const { sendMessage, lastMessage, readyState } = useWebSocket(`${process.env.NEXT_PUBLIC_API_URL}/ws`, {
+  const { sendMessage, lastMessage, readyState } = useWebSocket(getSocketUrl, {
     onError: (error) => {
       console.error('WebSocket error:', error);
     },
     shouldReconnect: () => true,
     reconnectAttempts: 10,
     reconnectInterval: 3000,
-    share: true,
   });
 
   useEffect(() => {

@@ -6,8 +6,10 @@ import { createSessionTokenCookie, deleteSessionTokenCookie } from '../auth/cook
 const auth = async (c: Context, next: Next) => {
   let sessionId = null;
 
-  if (c.req.header('Authorization')) {
-    sessionId = c.req.header('Authorization');
+  const authorization = c.req.header('Authorization');
+
+  if (authorization) {
+    sessionId = authorization.startsWith('Bearer ') ? authorization.slice(7) : authorization;
   } else {
     sessionId = getCookie(c, 'session') ?? null;
   }
