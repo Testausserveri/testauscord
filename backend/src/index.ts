@@ -26,7 +26,4 @@ app.route('/friends', friends);
 app.route('/', ws);
 app.route('/channels', channels);
 
-export default {
-  port: Bun.env.PORT || 3000,
-  fetch: app.fetch,
-};
+export default app;

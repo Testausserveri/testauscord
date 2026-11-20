@@ -1,33 +1,29 @@
+import { upgradeWebSocket } from '@hono/bun';
 import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
-import { createBunWebSocket } from 'hono/bun';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { FriendRequestStatus } from '../generated/prisma/client';
-import type { ContextData, Variables } from '../types/types';
+import { addConnection, getUserId, isSubscribed, publishToChannel, removeConnection, subscribe, unsubscribe } from '../realtime/connections';
+import type { Variables } from '../types/types';
 import { generateId } from '../utils/utils';
-
-const { upgradeWebSocket, websocket } = createBunWebSocket();
 
 const app = new Hono<{ Variables: Variables }>();
 
-const server = Bun.serve({
-  fetch: app.fetch,
-  websocket,
-});
-
-const socketContexts = new Map<ServerWebSocket, ContextData>();
-
-const subscribe = z.object({
+const subscribeSchema = z.object({
   channelId: z.string(),
   serverId: z.string().optional(),
 });
 
-const messageSend = z.object({
+const messageSendSchema = z.object({
   channelId: z.string(),
   serverId: z.string().optional(),
   content: z.string(),
 });
+
+const sendError = (ws: ServerWebSocket, message: string) => {
+  ws.send(JSON.stringify({ type: 'error', message }));
+};
 
 app.get(
   '/ws',
@@ -42,130 +38,143 @@ app.get(
 
     return {
       onOpen(_, ctx) {
-        socketContexts.set(ctx.raw as ServerWebSocket, {
-          userId,
-          subscribedChannels: new Set(),
-        });
+        addConnection(ctx.raw as ServerWebSocket, userId);
       },
 
       async onMessage(event, ctx) {
         const ws = ctx.raw as ServerWebSocket;
+        const connectionUserId = getUserId(ws);
+        if (!connectionUserId) {
+          ws.close(4001, 'Unauthorized');
+          return;
+        }
+
         let data;
         try {
           data = JSON.parse(event.data as string);
 
-          if (!data.type) return ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-        } catch (e) {
-          return ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
+          if (!data.type) {
+            sendError(ws, 'Invalid payload');
+            return;
+          }
+        } catch (error) {
+          sendError(ws, 'Invalid JSON');
+          return;
         }
-
-        const context = socketContexts.get(ws);
-        if (!context) return;
 
         switch (data.type) {
           case 'SUBSCRIBE': {
-            const result = subscribe.safeParse(data.data);
-            if (!result.success) return ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-            const channelId = data.data.channelId;
-            const serverId = data.data.serverId;
-
-            if (context.subscribedChannels.has(channelId)) {
-              return ws.send(
-                JSON.stringify({
-                  type: 'error',
-                  message: 'Already subscribed',
-                }),
-              );
+            const result = subscribeSchema.safeParse(data.data);
+            if (!result.success) {
+              sendError(ws, 'Invalid payload');
+              return;
             }
 
-            if (serverId == null) {
-              // DM
-              const friendship = await prisma.friendRequest.findUnique({
-                where: {
-                  id: channelId,
-                  status: FriendRequestStatus.ACCEPTED,
-                  OR: [{ senderId: context.userId }, { receiverId: context.userId }],
-                },
-              });
+            const { channelId, serverId } = result.data;
 
-              if (!friendship) {
-                return ws.send(JSON.stringify({ type: 'error', message: 'Invalid channel' }));
-              }
-            } else return;
+            if (serverId != null) {
+              sendError(ws, 'Server channels are not implemented yet');
+              return;
+            }
 
-            context.subscribedChannels.add(channelId);
-            ws.subscribe(channelId);
-            break;
+            if (isSubscribed(ws, channelId)) return;
+
+            const friendship = await prisma.friendRequest.findUnique({
+              where: {
+                id: channelId,
+                status: FriendRequestStatus.ACCEPTED,
+                OR: [{ senderId: connectionUserId }, { receiverId: connectionUserId }],
+              },
+            });
+
+            if (!friendship) {
+              sendError(ws, 'Invalid channel');
+              return;
+            }
+
+            subscribe(ws, channelId);
+            return;
           }
 
           case 'UNSUBSCRIBE': {
-            const result = subscribe.safeParse(data.data);
-            if (!result.success) return ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-            const channelId = data.data.channelId;
-
-            if (!context.subscribedChannels.has(channelId)) {
-              return ws.send(JSON.stringify({ type: 'error', message: 'Not subscribed' }));
+            const result = subscribeSchema.safeParse(data.data);
+            if (!result.success) {
+              sendError(ws, 'Invalid payload');
+              return;
             }
 
-            context.subscribedChannels.delete(channelId);
-            ws.unsubscribe(channelId);
-            break;
+            unsubscribe(ws, result.data.channelId);
+            return;
           }
 
           case 'MESSAGE_SEND': {
-            const result = messageSend.safeParse(data.data);
-            if (!result.success) return ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
-            const { channelId, content, serverId } = data.data;
-            const authorId = context.userId;
+            const result = messageSendSchema.safeParse(data.data);
+            if (!result.success) {
+              sendError(ws, 'Invalid payload');
+              return;
+            }
 
-            if (serverId == null) {
-              const friendship = await prisma.friendRequest.findUnique({
-                where: {
-                  id: channelId,
-                  status: FriendRequestStatus.ACCEPTED,
-                  OR: [{ senderId: authorId }, { receiverId: authorId }],
+            const { channelId, content, serverId } = result.data;
+
+            if (serverId != null) {
+              sendError(ws, 'Server channels are not implemented yet');
+              return;
+            }
+
+            if (!content.trim() || content.length > 4000) {
+              sendError(ws, 'Invalid message content');
+              return;
+            }
+
+            const friendship = await prisma.friendRequest.findUnique({
+              where: {
+                id: channelId,
+                status: FriendRequestStatus.ACCEPTED,
+                OR: [{ senderId: connectionUserId }, { receiverId: connectionUserId }],
+              },
+            });
+
+            if (!friendship) {
+              sendError(ws, 'Invalid channel');
+              return;
+            }
+
+            const message = await prisma.message.create({
+              data: {
+                id: generateId(),
+                channelId,
+                senderId: connectionUserId,
+                content,
+              },
+              include: {
+                sender: true,
+              },
+            });
+
+            const payload = JSON.stringify({
+              type: 'MESSAGE_CREATE',
+              data: {
+                id: message.id,
+                channelId: message.channelId,
+                serverId,
+                content: message.content,
+                sender: {
+                  id: message.senderId,
+                  username: message.sender.username,
                 },
-              });
+                createdAt: message.createdAt,
+              },
+            });
 
-              if (!friendship) {
-                return ws.send(JSON.stringify({ type: 'error', message: 'Invalid channel' }));
-              }
-
-              const message = await prisma.message.create({
-                data: {
-                  id: generateId(),
-                  channelId,
-                  senderId: authorId,
-                  content,
-                },
-                include: {
-                  sender: true,
-                },
-              });
-
-              const payload = {
-                type: 'MESSAGE_CREATE',
-                data: {
-                  id: message.id,
-                  channelId: message.channelId,
-                  serverId: serverId,
-                  content: message.content,
-                  sender: {
-                    id: message.senderId,
-                    username: message.sender.username,
-                  },
-                  createdAt: message.createdAt,
-                },
-              };
-
-              server.publish(channelId, JSON.stringify(payload));
-            } else return;
+            if (!isSubscribed(ws, channelId)) ws.send(payload);
+            publishToChannel(channelId, payload);
+            return;
           }
         }
       },
 
-      onClose: async (_, ctx) => {
-        const ws = ctx.raw as ServerWebSocket;
+      onClose(_, ctx) {
+        removeConnection(ctx.raw as ServerWebSocket);
       },
     };
   }),
