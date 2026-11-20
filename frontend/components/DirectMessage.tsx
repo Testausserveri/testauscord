@@ -2,7 +2,7 @@
 
 import type React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getFriends, getMessages } from '@/api/api';
+import { getFriends, getMessages, createMessage } from '@/api/api';
 import { Friend, Message } from '@/types/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { notFound } from 'next/navigation';
@@ -151,19 +151,18 @@ export function DirectMessage({ id }: { id: string }) {
   if (!friend) return notFound();
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || isSending || readyState !== WebSocket.OPEN) return;
+    const content = messageInput.trim();
+    if (!content || isSending) return;
 
     setIsSending(true);
     try {
-      sendMessage(
-        JSON.stringify({
-          type: 'MESSAGE_SEND',
-          data: {
-            channelId: id,
-            content: messageInput.trim(),
-          },
-        }),
-      );
+      const newMessage = (await createMessage(id, content, crypto.randomUUID())) as Message;
+
+      queryClient.setQueryData(['messages', id], (oldMessages: Message[] | undefined) => {
+        if (!oldMessages) return [newMessage];
+        if (oldMessages.some((message) => message.id === newMessage.id)) return oldMessages;
+        return [...oldMessages, newMessage];
+      });
 
       setMessageInput('');
       setIsUserScrolledUp(false);

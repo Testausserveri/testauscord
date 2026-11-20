@@ -62,3 +62,7 @@ export const getFriends = async () => {
 export const getMessages = async (id: string) => {
   return await axios.get(`${API_URL}/channels/${id}/messages`, { withCredentials: true }).then((res) => res.data);
 };
+
+export const createMessage = async (channelId: string, content: string, nonce: string) => {
+  return await axios.post(`${API_URL}/channels/${channelId}/messages`, { content, nonce }, { withCredentials: true }).then((res) => res.data);
+};

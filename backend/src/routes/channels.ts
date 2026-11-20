@@ -1,8 +1,51 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { Variables } from '../types/types';
 import { prisma } from '../db';
+import { canAccessChannel } from '../services/access';
+import { createChannelMessage } from '../services/messages';
 
 const app = new Hono<{ Variables: Variables }>();
+
+const createMessageSchema = z.object({
+  content: z
+    .string()
+    .min(1)
+    .max(4000)
+    .refine((value) => value.trim().length > 0),
+  nonce: z.string().min(1).max(64),
+});
+
+app.post('/:id/messages', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const channelId = c.req.param('id');
+  if (!channelId) {
+    return c.text('Invalid channel id', 400);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const result = createMessageSchema.safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid message', 400);
+  }
+
+  if (!(await canAccessChannel(c.get('user')!.id, channelId))) {
+    return c.text('You do not have permission to send messages in this channel', 403);
+  }
+
+  const { message, created } = await createChannelMessage({
+    channelId,
+    senderId: c.get('user')!.id,
+    content: result.data.content,
+    clientNonce: result.data.nonce,
+  });
+
+  return c.json(message, created ? 201 : 200);
+});
 
 app.get('/:id/messages', async (c) => {
   if (!c.get('user') || !c.get('session')) {

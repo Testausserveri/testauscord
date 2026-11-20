@@ -3,27 +3,18 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { validateSessionToken } from '../auth/session';
-import { prisma } from '../db';
-import { eventBus } from '../realtime/bus';
 import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
-import { PROTOCOL_VERSION, type MessageDTO, messageCreateFrame, pongFrameSchema } from '../realtime/protocol';
+import { PROTOCOL_VERSION, pongFrameSchema } from '../realtime/protocol';
 import { verifyTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
-import { generateId } from '../utils/utils';
 
 const app = new Hono<{ Variables: Variables }>();
 
 const subscribeSchema = z.object({
   channelId: z.string(),
   serverId: z.string().optional(),
-});
-
-const messageSendSchema = z.object({
-  channelId: z.string(),
-  serverId: z.string().optional(),
-  content: z.string(),
 });
 
 const sendError = (ws: ServerWebSocket, message: string) => {
@@ -129,66 +120,6 @@ app.get(
             }
 
             unsubscribe(ws, result.data.channelId);
-            return;
-          }
-
-          case 'MESSAGE_SEND': {
-            const result = messageSendSchema.safeParse(data.data);
-            if (!result.success) {
-              sendError(ws, 'Invalid payload');
-              return;
-            }
-
-            const { channelId, content, serverId } = result.data;
-
-            if (serverId != null) {
-              sendError(ws, 'Server channels are not implemented yet');
-              return;
-            }
-
-            if (!content.trim() || content.length > 4000) {
-              sendError(ws, 'Invalid message content');
-              return;
-            }
-
-            if (!(await canAccessChannel(connectionUserId, channelId))) {
-              sendError(ws, 'Invalid channel');
-              return;
-            }
-
-            const message = await prisma.message.create({
-              data: {
-                id: generateId(),
-                channelId,
-                senderId: connectionUserId,
-                content,
-              },
-              include: {
-                sender: true,
-              },
-            });
-
-            const messageDto: MessageDTO = {
-              id: message.id,
-              channelId: message.channelId,
-              content: message.content,
-              format: message.format,
-              sender: {
-                id: message.senderId,
-                username: message.sender.username,
-              },
-              createdAt: message.createdAt.toISOString(),
-            };
-
-            if (!isSubscribed(ws, channelId)) {
-              ws.send(JSON.stringify(messageCreateFrame(messageDto)));
-            }
-
-            eventBus.publish({
-              type: 'MESSAGE_CREATE',
-              channelId,
-              message: messageDto,
-            });
             return;
           }
         }
