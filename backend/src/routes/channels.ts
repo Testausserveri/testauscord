@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Variables } from '../types/types';
 import { prisma } from '../db';
 import { canAccessChannel } from '../services/access';
-import { createChannelMessage } from '../services/messages';
+import { buildMessagePage, createChannelMessage, toMessageDto } from '../services/messages';
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -52,29 +52,18 @@ app.get('/:id/messages', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  if (!c.req.param('id')) {
+  const channelId = c.req.param('id');
+  if (!channelId) {
     return c.text('Invalid channel id', 400);
   }
 
   const channel = await prisma.channel.findUnique({
-    where: { id: c.req.param('id') },
+    where: { id: channelId },
     select: {
       id: true,
-      name: true,
-      members: true,
-      messages: {
-        select: {
-          id: true,
-          channelId: true,
-          createdAt: true,
-          content: true,
-          sender: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
+      members: {
+        where: { userId: c.get('user')!.id },
+        select: { id: true },
       },
     },
   });
@@ -83,31 +72,61 @@ app.get('/:id/messages', async (c) => {
     return c.text('Channel not found', 404);
   }
 
-  if (!channel.members.some((member) => member.userId === c.get('user')!.id)) {
+  if (channel.members.length === 0) {
     return c.text('You do not have permission to view this channel', 403);
   }
 
-  if (c.req.query('limit') && !/^\d+$/.test(c.req.query('limit')!)) {
+  const rawLimit = c.req.query('limit');
+  if (rawLimit !== undefined && !/^\d+$/.test(rawLimit)) {
     return c.text('Invalid limit', 400);
   }
 
-  let messages = [...channel.messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const limit = rawLimit ? Number(rawLimit) : 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return c.text('Invalid limit', 400);
+  }
 
-  if (c.req.query('before')) {
-    const index = messages.findIndex((message) => message.id === c.req.query('before'));
+  const beforeId = c.req.query('before');
+  let before: { id: string; createdAt: Date } | null = null;
 
-    if (index === -1) {
+  if (beforeId) {
+    before = await prisma.message.findFirst({
+      where: { id: beforeId, channelId },
+      select: { id: true, createdAt: true },
+    });
+
+    if (!before) {
       return c.text('Invalid before', 400);
     }
-
-    messages = messages.slice(0, index);
   }
 
-  if (c.req.query('limit')) {
-    return c.json(messages.slice(-Number(c.req.query('limit'))), 200);
-  }
+  const rows = await prisma.message.findMany({
+    where: {
+      channelId,
+      ...(before
+        ? {
+            OR: [{ createdAt: { lt: before.createdAt } }, { createdAt: before.createdAt, id: { lt: before.id } }],
+          }
+        : {}),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+    select: {
+      id: true,
+      channelId: true,
+      senderId: true,
+      content: true,
+      format: true,
+      createdAt: true,
+      sender: {
+        select: { username: true },
+      },
+    },
+  });
 
-  return c.json(messages, 200);
+  const { page, nextCursor } = buildMessagePage(rows, limit);
+
+  return c.json({ messages: page.reverse().map(toMessageDto), nextCursor }, 200);
 });
 
 export default app;

@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { getFriends, getMessages, createMessage } from '@/api/api';
 import { Friend, Message } from '@/types/types';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -36,6 +36,11 @@ const shouldGroupMessages = (currentMsg: Message, prevMsg: Message | undefined) 
   return prevMsg.sender.id === currentMsg.sender.id && timeDiff < fiveMinutes;
 };
 
+type MessagesPage = {
+  messages: Message[];
+  nextCursor: string | null;
+};
+
 export function DirectMessage({ id }: { id: string }) {
   const [messageInput, setMessageInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -49,12 +54,35 @@ export function DirectMessage({ id }: { id: string }) {
     staleTime: 1000 * 20,
   });
 
-  const { data: messages, isPending: messagesPending } = useQuery({
+  const {
+    data: messagesData,
+    isPending: messagesPending,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['messages', id],
-    queryFn: () => getMessages(id),
+    queryFn: ({ pageParam }) => getMessages(id, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: MessagesPage) => lastPage.nextCursor ?? undefined,
     staleTime: 1000 * 20,
     refetchOnMount: 'always',
   });
+
+  // pages arrive newest first; show them oldest first
+  const messages = messagesData ? [...messagesData.pages].reverse().flatMap((page) => page.messages) : undefined;
+
+  const appendMessage = (message: Message) => {
+    queryClient.setQueryData<InfiniteData<MessagesPage>>(['messages', id], (oldData) => {
+      if (!oldData?.pages[0]) return oldData;
+      if (oldData.pages[0].messages.some((existing) => existing.id === message.id)) return oldData;
+
+      return {
+        ...oldData,
+        pages: [{ ...oldData.pages[0], messages: [...oldData.pages[0].messages, message] }, ...oldData.pages.slice(1)],
+      };
+    });
+  };
 
   const { sendMessage, lastMessage, readyState } = useWebSocketContext();
 
@@ -80,6 +108,17 @@ export function DirectMessage({ id }: { id: string }) {
     } else if (!nearBottom && !isUserScrolledUp) {
       setIsUserScrolledUp(true);
     }
+  };
+
+  const loadOlderMessages = async () => {
+    const container = scrollContainerRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
+
+    await fetchNextPage();
+
+    requestAnimationFrame(() => {
+      if (container) container.scrollTop += container.scrollHeight - previousHeight;
+    });
   };
 
   useEffect(() => {
@@ -125,14 +164,7 @@ export function DirectMessage({ id }: { id: string }) {
 
           if (newMessage.channelId !== id) return;
 
-          queryClient.setQueryData(['messages', id], (oldMessages: Message[] | undefined) => {
-            if (!oldMessages) return [newMessage];
-
-            const messageExists = oldMessages.some((msg) => msg.id === newMessage.id);
-            if (messageExists) return oldMessages;
-
-            return [...oldMessages, newMessage];
-          });
+          appendMessage(newMessage);
 
           setTimeout(() => {
             if (!isUserScrolledUp) {
@@ -158,11 +190,7 @@ export function DirectMessage({ id }: { id: string }) {
     try {
       const newMessage = (await createMessage(id, content, crypto.randomUUID())) as Message;
 
-      queryClient.setQueryData(['messages', id], (oldMessages: Message[] | undefined) => {
-        if (!oldMessages) return [newMessage];
-        if (oldMessages.some((message) => message.id === newMessage.id)) return oldMessages;
-        return [...oldMessages, newMessage];
-      });
+      appendMessage(newMessage);
 
       setMessageInput('');
       setIsUserScrolledUp(false);
@@ -205,6 +233,13 @@ export function DirectMessage({ id }: { id: string }) {
           </div>
         ) : (
           <div className="p-4 space-y-1">
+            {hasNextPage && (
+              <div className="flex justify-center pb-2">
+                <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isFetchingNextPage}>
+                  {isFetchingNextPage ? 'Loading...' : 'Load older messages'}
+                </Button>
+              </div>
+            )}
             {messages?.map((message: Message, index: number) => {
               const prevMessage = index > 0 ? messages[index - 1] : undefined;
               const isGrouped = shouldGroupMessages(message, prevMessage);

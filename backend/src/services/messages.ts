@@ -29,6 +29,16 @@ export const toMessageDto = (message: MessageRecord): MessageDTO => ({
   createdAt: message.createdAt.toISOString(),
 });
 
+export const buildMessagePage = <T extends { id: string }>(rows: T[], limit: number): { page: T[]; nextCursor: string | null } => {
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    page,
+    nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+  };
+};
+
 export const createChannelMessage = async (input: { channelId: string; senderId: string; content: string; clientNonce: string }) => {
   const { channelId, senderId, content, clientNonce } = input;
 
