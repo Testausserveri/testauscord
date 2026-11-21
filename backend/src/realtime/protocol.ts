@@ -75,6 +75,7 @@ export type ServerFrame =
       data: { type: 'SUBSCRIBE' | 'UNSUBSCRIBE'; channelId: string };
     }
   | { type: 'MESSAGE_CREATE'; data: { message: MessageDTO } }
+  | { type: 'SERVER_MEMBER_REMOVED'; data: { serverId: string } }
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
 export type ServerFrameType = ServerFrame['type'];
@@ -82,6 +83,11 @@ export type ServerFrameType = ServerFrame['type'];
 export const messageCreateFrame = (message: MessageDTO): ServerFrame => ({
   type: 'MESSAGE_CREATE',
   data: { message },
+});
+
+export const serverMemberRemovedFrame = (serverId: string): ServerFrame => ({
+  type: 'SERVER_MEMBER_REMOVED',
+  data: { serverId },
 });
 
 export const errorFrame = (code: ErrorCode, message: string, nonce?: string): ServerFrame => ({

@@ -215,3 +215,13 @@ export const publishToChannel = (channelId: string, payload: string, now = Date.
     }
   }
 };
+
+export const publishToUser = (userId: string, payload: string, now = Date.now()): void => {
+  for (const connection of connections.values()) {
+    if (connection.userId !== userId) continue;
+    if (connection.sessionExpiresAt <= now) continue;
+    if (connection.ws.readyState === WebSocket.OPEN) {
+      connection.ws.send(payload);
+    }
+  }
+};

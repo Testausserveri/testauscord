@@ -1,10 +1,16 @@
 import type { MessageDTO } from './protocol';
 
-export type DomainEvent = {
-  type: 'MESSAGE_CREATE';
-  channelId: string;
-  message: MessageDTO;
-};
+export type DomainEvent =
+  | {
+      type: 'MESSAGE_CREATE';
+      channelId: string;
+      message: MessageDTO;
+    }
+  | {
+      type: 'SERVER_MEMBER_REMOVED';
+      serverId: string;
+      userId: string;
+    };
 
 export type EventListener = (event: DomainEvent) => void;
 

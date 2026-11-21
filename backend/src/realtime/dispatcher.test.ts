@@ -47,3 +47,38 @@ test('dispatches message events to channel subscribers', () => {
     removeConnection(ws);
   }
 });
+
+test('dispatches member removal events to the removed user', () => {
+  const sentA: string[] = [];
+  const sentB: string[] = [];
+  const socketA = {
+    readyState: WebSocket.OPEN,
+    send: (payload: string) => {
+      sentA.push(payload);
+      return payload.length;
+    },
+  } as unknown as ServerWebSocket;
+  const socketB = {
+    readyState: WebSocket.OPEN,
+    send: (payload: string) => {
+      sentB.push(payload);
+      return payload.length;
+    },
+  } as unknown as ServerWebSocket;
+
+  addConnection(socketA, 'user-a', 'session-a', Date.now() + 60_000);
+  addConnection(socketB, 'user-b', 'session-b', Date.now() + 60_000);
+
+  const stop = startDispatcher();
+
+  try {
+    eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: 'server-1', userId: 'user-a' });
+
+    expect(sentA).toEqual([JSON.stringify({ type: 'SERVER_MEMBER_REMOVED', data: { serverId: 'server-1' } })]);
+    expect(sentB).toEqual([]);
+  } finally {
+    stop();
+    removeConnection(socketA);
+    removeConnection(socketB);
+  }
+});

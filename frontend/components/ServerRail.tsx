@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, MessageCircle, Plus, UserPlus } from 'lucide-react';
+import { LogOut, MessageCircle, Plus, Ticket, UserPlus, Users } from 'lucide-react';
 import { createServer, getServers, getUser, joinServer } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { CurrentUser, Server, ServerAction } from '@/types/types';
@@ -129,12 +129,35 @@ export function ServerRail() {
               <ContextMenuItem
                 onSelect={() => {
                   setActionServer(server);
+                  setAction('members');
+                }}
+              >
+                <Users />
+                Members
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() => {
+                  setActionServer(server);
                   setAction('invite');
                 }}
               >
                 <UserPlus />
                 Invite people
               </ContextMenuItem>
+              {user?.id === server.ownerId && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setActionServer(server);
+                      setAction('invites');
+                    }}
+                  >
+                    <Ticket />
+                    Active invites
+                  </ContextMenuItem>
+                </>
+              )}
               {user && user.id !== server.ownerId && (
                 <>
                   <ContextMenuSeparator />

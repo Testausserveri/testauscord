@@ -4,7 +4,9 @@ import { createLocalBus } from './bus';
 test('publishes to subscribers until they unsubscribe', () => {
   const bus = createLocalBus();
   const seen: string[] = [];
-  const stop = bus.subscribe((event) => seen.push(event.channelId));
+  const stop = bus.subscribe((event) => {
+    if (event.type === 'MESSAGE_CREATE') seen.push(event.channelId);
+  });
 
   bus.publish({
     type: 'MESSAGE_CREATE',
@@ -35,4 +37,18 @@ test('publishes to subscribers until they unsubscribe', () => {
   });
 
   expect(seen).toEqual(['channel-1']);
+});
+
+test('publishes membership events', () => {
+  const bus = createLocalBus();
+  const seen: string[] = [];
+  const stop = bus.subscribe((event) => {
+    if (event.type === 'SERVER_MEMBER_REMOVED') seen.push(event.serverId);
+  });
+
+  bus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: 'server-1', userId: 'user-1' });
+
+  stop();
+
+  expect(seen).toEqual(['server-1']);
 });

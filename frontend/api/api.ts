@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
-import type { CurrentUser, Server, ServerChannel, ServerDetail } from '@/types/types';
+import type { CurrentUser, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -82,6 +82,18 @@ export const createChannel = async (serverId: string, name: string): Promise<Ser
 
 export const createInvite = async (serverId: string): Promise<{ code: string }> => {
   return await axios.post(`${API_URL}/servers/${serverId}/invites`, {}, { withCredentials: true }).then((res) => res.data);
+};
+
+export const getInvites = async (serverId: string): Promise<ServerInvite[]> => {
+  return await axios.get(`${API_URL}/servers/${serverId}/invites`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const revokeInvite = async (serverId: string, code: string) => {
+  await axios.delete(`${API_URL}/servers/${serverId}/invites/${code}`, { withCredentials: true });
+};
+
+export const removeMember = async (serverId: string, userId: string) => {
+  await axios.delete(`${API_URL}/servers/${serverId}/members/${userId}`, { withCredentials: true });
 };
 
 export const leaveServer = async (serverId: string) => {

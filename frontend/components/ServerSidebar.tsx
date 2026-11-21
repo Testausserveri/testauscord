@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Hash, LogOut, Plus, UserPlus } from 'lucide-react';
+import { ChevronDown, Hash, LogOut, Plus, Ticket, UserPlus, Users } from 'lucide-react';
 import { createChannel, getServers, getUser } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { CurrentUser, Server, ServerAction } from '@/types/types';
@@ -106,15 +106,26 @@ export function ServerSidebar() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuItem disabled={!server} onSelect={() => setAction('members')}>
+              <Users />
+              Members
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={!server} onSelect={() => setAction('invite')}>
               <UserPlus />
               Invite people
             </DropdownMenuItem>
             {isOwner && (
-              <DropdownMenuItem onSelect={() => setChannelDialogOpen(true)}>
-                <Plus />
-                Create channel
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setAction('invites')}>
+                  <Ticket />
+                  Active invites
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setChannelDialogOpen(true)}>
+                  <Plus />
+                  Create channel
+                </DropdownMenuItem>
+              </>
             )}
             {user && !isOwner && (
               <>

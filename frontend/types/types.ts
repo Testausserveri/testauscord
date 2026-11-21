@@ -3,7 +3,7 @@ export type CurrentUser = {
   username: string;
 };
 
-export type ServerAction = 'invite' | 'leave';
+export type ServerAction = 'invite' | 'invites' | 'members' | 'leave';
 
 export type Friend = {
   id: string;
@@ -47,4 +47,14 @@ export type ServerDetail = Server & {
     username: string;
     joinedAt: string;
   }[];
+};
+
+export type ServerInvite = {
+  code: string;
+  createdAt: string;
+  expiresAt: string;
+  createdBy: {
+    id: string;
+    username: string;
+  };
 };

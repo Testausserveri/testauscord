@@ -7,6 +7,7 @@ import {
   closeSessionConnections,
   markAlive,
   publishToChannel,
+  publishToUser,
   removeConnection,
   revalidateConnections,
   runHeartbeatSweep,
@@ -59,6 +60,31 @@ test('publishes only to subscribed sockets and cleans up', () => {
 
   removeConnection(a.ws);
   removeConnection(a.ws);
+});
+
+test('publishes user events to every connection for that user', () => {
+  const a1 = createSocket();
+  const a2 = createSocket();
+  const b = createSocket();
+  const expired = createSocket();
+  const now = 1_800_000_000_000;
+
+  addConnection(a1.ws, 'user-a', 'session-a1', now + 60_000, now);
+  addConnection(a2.ws, 'user-a', 'session-a2', now + 60_000, now);
+  addConnection(b.ws, 'user-b', 'session-b', now + 60_000, now);
+  addConnection(expired.ws, 'user-a', 'session-expired', now - 1, now);
+
+  publishToUser('user-a', 'event', now);
+
+  expect(a1.sent).toEqual(['event']);
+  expect(a2.sent).toEqual(['event']);
+  expect(b.sent).toEqual([]);
+  expect(expired.sent).toEqual([]);
+
+  removeConnection(a1.ws);
+  removeConnection(a2.ws);
+  removeConnection(b.ws);
+  removeConnection(expired.ws);
 });
 
 test('removes a user from a channel across all their connections', () => {
