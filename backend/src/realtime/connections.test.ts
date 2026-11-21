@@ -1,8 +1,9 @@
 import type { ServerWebSocket } from 'bun';
 import { expect, test } from 'bun:test';
-import { HEARTBEAT_TIMEOUT_MS, MAX_SUBSCRIPTIONS } from './protocol';
+import { FRAME_WINDOW_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS } from './protocol';
 import {
   addConnection,
+  checkFrameBudget,
   closeSessionConnections,
   markAlive,
   publishToChannel,
@@ -194,6 +195,41 @@ test('rejects subscriptions past the cap', () => {
   }
 
   expect(subscribe(socket.ws, `${prefix}-over-limit`)).toBe(false);
+
+  removeConnection(socket.ws);
+});
+
+test('caps connections per user', () => {
+  const now = Date.now();
+  const sockets = Array.from({ length: MAX_CONNECTIONS_PER_USER }, () => createSocket());
+
+  for (const socket of sockets) {
+    expect(addConnection(socket.ws, 'user-conn-cap', 'session-conn-cap', now + 60_000, now)).toBe(true);
+  }
+
+  const extra = createSocket();
+  expect(addConnection(extra.ws, 'user-conn-cap', 'session-conn-cap-extra', now + 60_000, now)).toBe(false);
+
+  const other = createSocket();
+  expect(addConnection(other.ws, 'user-other', 'session-other', now + 60_000, now)).toBe(true);
+
+  for (const socket of sockets) removeConnection(socket.ws);
+  removeConnection(extra.ws);
+  removeConnection(other.ws);
+});
+
+test('limits frames sent on one connection', () => {
+  const socket = createSocket();
+  const now = 1_800_000_000_000;
+
+  addConnection(socket.ws, 'user-frame-budget', 'session-frame-budget', now + 60_000, now);
+
+  for (let index = 0; index < MAX_FRAMES_PER_WINDOW; index++) {
+    expect(checkFrameBudget(socket.ws, now)).toBe(true);
+  }
+
+  expect(checkFrameBudget(socket.ws, now)).toBe(false);
+  expect(checkFrameBudget(socket.ws, now + FRAME_WINDOW_MS + 1)).toBe(true);
 
   removeConnection(socket.ws);
 });

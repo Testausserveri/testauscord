@@ -3,7 +3,7 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { validateSessionId } from '../auth/session';
-import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
+import { addConnection, checkFrameBudget, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
 import { redeemTicket } from '../realtime/ticket';
@@ -54,7 +54,10 @@ app.get(
 
     return {
       onOpen(_, ctx) {
-        addConnection(ctx.raw as ServerWebSocket, userId, session.id, session.expiresAt.getTime());
+        const ws = ctx.raw as ServerWebSocket;
+        if (!addConnection(ws, userId, session.id, session.expiresAt.getTime())) {
+          ws.close(4009, 'Too many connections');
+        }
       },
 
       async onMessage(event, ctx) {
@@ -66,6 +69,11 @@ app.get(
         }
 
         touchConnection(ws);
+
+        if (!checkFrameBudget(ws)) {
+          sendError(ws, 'RATE_LIMITED', 'Too many frames');
+          return;
+        }
 
         let data;
         try {

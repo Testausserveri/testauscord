@@ -1,5 +1,6 @@
 import type { ServerWebSocket } from 'bun';
-import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_SUBSCRIPTIONS, type ServerFrame } from './protocol';
+import { createRateLimiter, type RateLimiter } from '../utils/rateLimit';
+import { FRAME_WINDOW_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS, type ServerFrame } from './protocol';
 
 type Connection = {
   ws: ServerWebSocket;
@@ -11,6 +12,7 @@ type Connection = {
   lastSeenAt: number;
   pingSentAt: number | null;
   pingNonce: string | null;
+  frameLimiter: RateLimiter;
 };
 
 export const SESSION_REVALIDATION_INTERVAL_MS = 5 * 60_000;
@@ -18,8 +20,15 @@ export const SESSION_REVALIDATION_INTERVAL_MS = 5 * 60_000;
 const connections = new Map<ServerWebSocket, Connection>();
 const channelConnections = new Map<string, Set<Connection>>();
 
-export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string, sessionExpiresAt: number, now = Date.now()): void => {
+export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string, sessionExpiresAt: number, now = Date.now()): boolean => {
   if (connections.has(ws)) removeConnection(ws);
+
+  let userConnections = 0;
+  for (const connection of connections.values()) {
+    if (connection.userId === userId) userConnections += 1;
+  }
+
+  if (userConnections >= MAX_CONNECTIONS_PER_USER) return false;
 
   connections.set(ws, {
     ws,
@@ -31,7 +40,10 @@ export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: st
     lastSeenAt: now,
     pingSentAt: null,
     pingNonce: null,
+    frameLimiter: createRateLimiter(MAX_FRAMES_PER_WINDOW, FRAME_WINDOW_MS),
   });
+
+  return true;
 };
 
 export const removeConnection = (ws: ServerWebSocket): void => {
@@ -50,6 +62,8 @@ export const removeConnection = (ws: ServerWebSocket): void => {
 };
 
 export const getUserId = (ws: ServerWebSocket): string | undefined => connections.get(ws)?.userId;
+
+export const checkFrameBudget = (ws: ServerWebSocket, now = Date.now()): boolean => connections.get(ws)?.frameLimiter.check('frame', now).allowed ?? false;
 
 export const touchConnection = (ws: ServerWebSocket, now = Date.now()): void => {
   const connection = connections.get(ws);
