@@ -1,6 +1,7 @@
 import { websocket } from '@hono/bun';
 import app from './index';
-import { startHeartbeat } from './realtime/connections';
+import { getSession } from './auth/session';
+import { startHeartbeat, startSessionRevalidation } from './realtime/connections';
 import { startDispatcher } from './realtime/dispatcher';
 import { MAX_BUFFERED_BYTES, MAX_FRAME_BYTES } from './realtime/protocol';
 
@@ -18,5 +19,6 @@ const server = Bun.serve({
 
 startDispatcher();
 startHeartbeat();
+startSessionRevalidation(getSession);
 
 console.log(`API listening on ${server.url}`);

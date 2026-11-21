@@ -5,24 +5,30 @@ type Connection = {
   ws: ServerWebSocket;
   userId: string;
   sessionId: string;
+  sessionExpiresAt: number;
+  nextSessionCheckAt: number;
   channels: Set<string>;
   lastSeenAt: number;
   pingSentAt: number | null;
   pingNonce: string | null;
 };
 
+export const SESSION_REVALIDATION_INTERVAL_MS = 5 * 60_000;
+
 const connections = new Map<ServerWebSocket, Connection>();
 const channelConnections = new Map<string, Set<Connection>>();
 
-export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string): void => {
+export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string, sessionExpiresAt: number, now = Date.now()): void => {
   if (connections.has(ws)) removeConnection(ws);
 
   connections.set(ws, {
     ws,
     userId,
     sessionId,
+    sessionExpiresAt,
+    nextSessionCheckAt: now,
     channels: new Set(),
-    lastSeenAt: Date.now(),
+    lastSeenAt: now,
     pingSentAt: null,
     pingNonce: null,
   });
@@ -69,6 +75,12 @@ export const runHeartbeatSweep = (now = Date.now()): void => {
       continue;
     }
 
+    if (connection.sessionExpiresAt <= now) {
+      connection.ws.close(4001, 'Session expired');
+      removeConnection(connection.ws);
+      continue;
+    }
+
     if (now - connection.lastSeenAt > HEARTBEAT_TIMEOUT_MS) {
       connection.ws.close(4008, 'Heartbeat timeout');
       removeConnection(connection.ws);
@@ -93,6 +105,36 @@ export const runHeartbeatSweep = (now = Date.now()): void => {
 
 export const startHeartbeat = (): (() => void) => {
   const timer = setInterval(() => runHeartbeatSweep(), HEARTBEAT_INTERVAL_MS);
+  return () => clearInterval(timer);
+};
+
+export type SessionLookup = (sessionId: string) => Promise<{ expiresAt: Date } | null>;
+
+export const revalidateConnections = async (lookup: SessionLookup, now = Date.now()): Promise<void> => {
+  for (const connection of [...connections.values()]) {
+    if (connection.nextSessionCheckAt > now) continue;
+
+    connection.nextSessionCheckAt = now + SESSION_REVALIDATION_INTERVAL_MS;
+
+    let session: { expiresAt: Date } | null = null;
+    try {
+      session = await lookup(connection.sessionId);
+    } catch {
+      continue;
+    }
+
+    if (!session || session.expiresAt.getTime() <= now) {
+      connection.ws.close(4001, 'Session expired');
+      removeConnection(connection.ws);
+      continue;
+    }
+
+    connection.sessionExpiresAt = session.expiresAt.getTime();
+  }
+};
+
+export const startSessionRevalidation = (lookup: SessionLookup, intervalMs = SESSION_REVALIDATION_INTERVAL_MS): (() => void) => {
+  const timer = setInterval(() => void revalidateConnections(lookup), intervalMs);
   return () => clearInterval(timer);
 };
 
@@ -148,11 +190,12 @@ export const closeSessionConnections = (sessionId: string): void => {
   }
 };
 
-export const publishToChannel = (channelId: string, payload: string): void => {
+export const publishToChannel = (channelId: string, payload: string, now = Date.now()): void => {
   const subscribers = channelConnections.get(channelId);
   if (!subscribers) return;
 
   for (const connection of subscribers) {
+    if (connection.sessionExpiresAt <= now) continue;
     if (connection.ws.readyState === WebSocket.OPEN) {
       connection.ws.send(payload);
     }

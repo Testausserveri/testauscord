@@ -50,11 +50,11 @@ app.get(
   },
   upgradeWebSocket(async (c) => {
     const userId = c.get('user')!.id;
-    const sessionId = c.get('session')!.id;
+    const session = c.get('session')!;
 
     return {
       onOpen(_, ctx) {
-        addConnection(ctx.raw as ServerWebSocket, userId, sessionId);
+        addConnection(ctx.raw as ServerWebSocket, userId, session.id, session.expiresAt.getTime());
       },
 
       async onMessage(event, ctx) {

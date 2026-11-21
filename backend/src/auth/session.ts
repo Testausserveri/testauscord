@@ -27,6 +27,14 @@ export const createSession = async (token: string, userId: string): Promise<Sess
   return session;
 };
 
+export const getSession = async (sessionId: string): Promise<Session | null> => {
+  return prisma.session.findUnique({
+    where: {
+      id: sessionId,
+    },
+  });
+};
+
 export const validateSessionToken = async (token: string): Promise<SessionValidationResult> => {
   return validateSessionId(hashSessionToken(token));
 };
