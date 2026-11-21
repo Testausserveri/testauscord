@@ -36,11 +36,12 @@ app.post('/login', async (c) => {
     return c.text('Incorrect username or password', 401);
   }
 
-  const session = await createSession(generateSessionToken(), existingUser.id);
+  const token = generateSessionToken();
+  const session = await createSession(token, existingUser.id);
 
-  c.header('Set-Cookie', createSessionTokenCookie(session.id, session.expiresAt));
+  c.header('Set-Cookie', createSessionTokenCookie(token, session.expiresAt));
 
-  return c.json({ sessionId: session.id }, 200);
+  return c.text('Success', 200);
 });
 
 export default app;

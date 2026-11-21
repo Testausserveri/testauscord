@@ -41,11 +41,12 @@ app.post('/signup', async (c) => {
     },
   });
 
-  const session = await createSession(generateSessionToken(), userId);
+  const token = generateSessionToken();
+  const session = await createSession(token, userId);
 
-  c.header('Set-Cookie', createSessionTokenCookie(session.id, session.expiresAt));
+  c.header('Set-Cookie', createSessionTokenCookie(token, session.expiresAt));
 
-  return c.json({ sessionId: session.id }, 201);
+  return c.text('Success', 201);
 });
 
 export default app;

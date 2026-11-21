@@ -4,26 +4,26 @@ import { validateSessionToken } from '../auth/session';
 import { createSessionTokenCookie, deleteSessionTokenCookie } from '../auth/cookie';
 
 const auth = async (c: Context, next: Next) => {
-  let sessionId = null;
+  let sessionToken = null;
 
   const authorization = c.req.header('Authorization');
 
   if (authorization) {
-    sessionId = authorization.startsWith('Bearer ') ? authorization.slice(7) : authorization;
+    sessionToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : authorization;
   } else {
-    sessionId = getCookie(c, 'session') ?? null;
+    sessionToken = getCookie(c, 'session') ?? null;
   }
 
-  if (!sessionId) {
+  if (!sessionToken) {
     c.set('user', null);
     c.set('session', null);
     return next();
   }
 
-  const { session, user } = await validateSessionToken(sessionId);
+  const { session, user } = await validateSessionToken(sessionToken);
 
   if (session) {
-    c.header('Set-Cookie', createSessionTokenCookie(session.id, session.expiresAt), {
+    c.header('Set-Cookie', createSessionTokenCookie(sessionToken, session.expiresAt), {
       append: true,
     });
   }

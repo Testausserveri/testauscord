@@ -2,7 +2,7 @@ import { upgradeWebSocket } from '@hono/bun';
 import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { validateSessionToken } from '../auth/session';
+import { validateSessionId } from '../auth/session';
 import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
@@ -38,7 +38,7 @@ app.get(
       return c.text('Unauthorized', 401);
     }
 
-    const { session, user } = await validateSessionToken(payload.sessionId);
+    const { session, user } = await validateSessionId(payload.sessionId);
 
     if (!session || !user || user.id !== payload.userId) {
       return c.text('Unauthorized', 401);

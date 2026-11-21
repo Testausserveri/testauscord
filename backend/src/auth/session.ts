@@ -11,11 +11,11 @@ export const generateSessionToken = (): string => {
   return token;
 };
 
-export const createSession = async (token: string, userId: string): Promise<Session> => {
-  const sessionId = encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
+export const hashSessionToken = (token: string): string => encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
 
+export const createSession = async (token: string, userId: string): Promise<Session> => {
   const session: Session = {
-    id: sessionId,
+    id: hashSessionToken(token),
     userId,
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
   };
@@ -27,7 +27,11 @@ export const createSession = async (token: string, userId: string): Promise<Sess
   return session;
 };
 
-export const validateSessionToken = async (sessionId: string): Promise<SessionValidationResult> => {
+export const validateSessionToken = async (token: string): Promise<SessionValidationResult> => {
+  return validateSessionId(hashSessionToken(token));
+};
+
+export const validateSessionId = async (sessionId: string): Promise<SessionValidationResult> => {
   const result = await prisma.session.findUnique({
     where: {
       id: sessionId,
