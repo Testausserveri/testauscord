@@ -1,11 +1,15 @@
 import { Hono } from 'hono';
 import type { Variables } from '../types/types';
 import { ChannelType } from '../generated/prisma/client';
+import { enforceRateLimit } from '../middleware/rateLimit';
+import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
 import { prisma } from '../db';
 import { directChannelKey, friendPair } from '../services/directMessages';
 
 const app = new Hono<{ Variables: Variables }>();
+const friendRequestLimiter = createRateLimiter(10, 60 * 60_000);
+const friendMutationLimiter = createRateLimiter(60, 60_000);
 
 const isValidUsername = (value: unknown): value is string => {
   return typeof value === 'string' && value.length >= 3 && value.length <= 31 && /^[a-z0-9_-]+$/.test(value);
@@ -15,6 +19,9 @@ app.post('/sendRequest', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
+
+  const limited = enforceRateLimit(c, friendRequestLimiter, c.get('user')!.id);
+  if (limited) return limited;
 
   const { target } = await c.req.json();
 
@@ -75,6 +82,9 @@ app.post('/respondToRequest', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
+
+  const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
+  if (limited) return limited;
 
   const { requestId, accepted } = await c.req.json();
 
@@ -154,6 +164,9 @@ app.post('/cancelRequest', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
+  const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
+  if (limited) return limited;
+
   const { requestId } = await c.req.json();
 
   if (typeof requestId !== 'string' || requestId.length === 0) {
@@ -179,6 +192,9 @@ app.post('/remove', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
+
+  const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
+  if (limited) return limited;
 
   const { target } = await c.req.json();
 

@@ -9,6 +9,14 @@ import { generateId } from '../utils/utils';
 
 const app = new Hono<{ Variables: Variables }>();
 const inviteLimiter = createRateLimiter(10, 60_000);
+const serverCreateLimiter = createRateLimiter(10, 60 * 60_000);
+const serverJoinLimiter = createRateLimiter(30, 60_000);
+const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
+const serverLeaveLimiter = createRateLimiter(10, 60_000);
+
+const MAX_SERVER_MEMBERSHIPS = 200;
+const MAX_CHANNELS_PER_SERVER = 50;
+const MAX_INVITES_PER_SERVER = 50;
 
 const serverNameSchema = z.string().trim().min(1).max(100);
 const channelNameSchema = z
@@ -45,6 +53,10 @@ app.post('/create', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverCreateLimiter, userId);
+  if (limited) return limited;
+
   const body = await c.req.json().catch(() => null);
   const result = z.object({ name: serverNameSchema }).safeParse(body);
 
@@ -52,13 +64,18 @@ app.post('/create', async (c) => {
     return c.text('Invalid server name', 400);
   }
 
+  const memberships = await prisma.serverMember.count({ where: { userId } });
+  if (memberships >= MAX_SERVER_MEMBERSHIPS) {
+    return c.text('Server limit reached', 409);
+  }
+
   const server = await prisma.server.create({
     data: {
       id: generateId(),
       name: result.data.name,
-      ownerId: c.get('user')!.id,
+      ownerId: userId,
       members: {
-        create: { id: generateId(), userId: c.get('user')!.id },
+        create: { id: generateId(), userId },
       },
       channels: {
         create: { id: generateId(), name: 'general', type: 'TEXT' },
@@ -89,6 +106,10 @@ app.post('/join', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverJoinLimiter, userId);
+  if (limited) return limited;
+
   const body = await c.req.json().catch(() => null);
   const result = z.object({ code: z.string().trim().min(1).max(64) }).safeParse(body);
 
@@ -108,7 +129,6 @@ app.post('/join', async (c) => {
     return c.text('Invalid invite code', 404);
   }
 
-  const userId = c.get('user')!.id;
   const existing = await prisma.serverMember.findUnique({
     where: { serverId_userId: { serverId: invite.serverId, userId } },
     select: { id: true },
@@ -116,6 +136,11 @@ app.post('/join', async (c) => {
 
   if (existing) {
     return c.json(invite.server, 200);
+  }
+
+  const memberships = await prisma.serverMember.count({ where: { userId } });
+  if (memberships >= MAX_SERVER_MEMBERSHIPS) {
+    return c.text('Server limit reached', 409);
   }
 
   try {
@@ -170,6 +195,9 @@ app.post('/:id/channels', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
+  const limited = enforceRateLimit(c, channelCreateLimiter, c.get('user')!.id);
+  if (limited) return limited;
+
   const server = await prisma.server.findUnique({
     where: { id: c.req.param('id') },
     select: { ownerId: true },
@@ -188,6 +216,11 @@ app.post('/:id/channels', async (c) => {
 
   if (!result.success) {
     return c.text('Invalid channel name', 400);
+  }
+
+  const channels = await prisma.channel.count({ where: { serverId: c.req.param('id') } });
+  if (channels >= MAX_CHANNELS_PER_SERVER) {
+    return c.text('Channel limit reached', 409);
   }
 
   try {
@@ -227,6 +260,19 @@ app.post('/:id/invites', async (c) => {
     return c.text('Server not found', 404);
   }
 
+  const invites = await prisma.serverInvite.count({ where: { serverId: server.id } });
+  if (invites >= MAX_INVITES_PER_SERVER) {
+    const existing = await prisma.serverInvite.findFirst({
+      where: { serverId: server.id },
+      select: { code: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    if (existing) {
+      return c.json(existing, 200);
+    }
+  }
+
   const invite = await prisma.serverInvite.create({
     data: {
       id: generateId(),
@@ -246,6 +292,9 @@ app.post('/:id/leave', async (c) => {
   }
 
   const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverLeaveLimiter, userId);
+  if (limited) return limited;
+
   const server = await prisma.server.findUnique({
     where: { id: c.req.param('id') },
     select: { ownerId: true, channels: { select: { id: true } } },
