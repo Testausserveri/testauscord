@@ -59,7 +59,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               </div>
               <Input id="password" type="password" onChange={(e) => setPassword(e.target.value)} />
             </div>
-            <Button className="w-full cursor-pointer" onClick={() => onLogin()}>
+            <Button className="w-full" onClick={() => onLogin()}>
               Login
             </Button>
           </div>

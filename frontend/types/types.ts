@@ -19,3 +19,25 @@ export type Message = {
   sender: MessageSender;
   channelId: string;
 };
+
+export type ServerChannel = {
+  id: string;
+  name: string;
+  type: 'DM' | 'TEXT';
+};
+
+export type Server = {
+  id: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  channels: ServerChannel[];
+};
+
+export type ServerDetail = Server & {
+  members: {
+    id: string;
+    username: string;
+    joinedAt: string;
+  }[];
+};

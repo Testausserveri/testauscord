@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { getFriends } from '@/api/api';
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
 import { Friend } from '@/types/types';
 import { useQuery } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 
 const navItems = [
   {
@@ -20,6 +21,7 @@ const navItems = [
 
 export function DmsSidebar() {
   const pathname = usePathname();
+  const { state } = useSidebar();
 
   const { data } = useQuery({
     queryKey: ['friends'],
@@ -28,7 +30,7 @@ export function DmsSidebar() {
   });
 
   return (
-    <Sidebar>
+    <Sidebar style={state === 'expanded' ? { left: SERVER_RAIL_WIDTH } : undefined}>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
@@ -58,7 +60,7 @@ export function DmsSidebar() {
                       <div className="relative mr-3">
                         <Avatar className="h-8 w-8">
                           <AvatarImage src="" alt={friend.friend.username} />
-                          <AvatarFallback className="bg-[#2b2d31]">
+                          <AvatarFallback className="bg-muted">
                             {friend.friend.username.charAt(0)}
                             {friend.friend.username.split(' ')[1]?.charAt(0)}
                           </AvatarFallback>
@@ -75,7 +77,6 @@ export function DmsSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarRail />
     </Sidebar>
   );
 }

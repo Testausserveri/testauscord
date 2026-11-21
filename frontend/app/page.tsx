@@ -15,7 +15,7 @@ export default function Home() {
         <div className="mt-10">
           <Button
             size="lg"
-            className="px-8 py-6 text-lg cursor-pointer"
+            className="px-8 py-6 text-lg"
             onClick={() => {
               router.push('/login');
             }}

@@ -84,7 +84,7 @@ export function SignupForm({ className, ...props }: React.ComponentPropsWithoutR
               </div>
               <Input id="passwordRepeat" type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} />
             </div>
-            <Button className="w-full cursor-pointer" onClick={() => onSignup()}>
+            <Button className="w-full" onClick={() => onSignup()}>
               Sign up
             </Button>
           </div>
