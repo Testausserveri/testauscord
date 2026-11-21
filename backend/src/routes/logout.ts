@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { invalidateSession } from '../auth/session';
 import { deleteSessionTokenCookie } from '../auth/cookie';
+import { closeSessionConnections } from '../realtime/connections';
 import type { Variables } from '../types/types';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -10,7 +11,10 @@ app.post('/logout', async (c) => {
     return c.text('You are not logged in', 200);
   }
 
-  await invalidateSession(c.get('session')!.id);
+  const sessionId = c.get('session')!.id;
+
+  await invalidateSession(sessionId);
+  closeSessionConnections(sessionId);
 
   c.header('Set-Cookie', deleteSessionTokenCookie());
 

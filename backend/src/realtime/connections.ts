@@ -1,9 +1,10 @@
 import type { ServerWebSocket } from 'bun';
-import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, type ServerFrame } from './protocol';
+import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_SUBSCRIPTIONS, type ServerFrame } from './protocol';
 
 type Connection = {
   ws: ServerWebSocket;
   userId: string;
+  sessionId: string;
   channels: Set<string>;
   lastSeenAt: number;
   pingSentAt: number | null;
@@ -13,12 +14,13 @@ type Connection = {
 const connections = new Map<ServerWebSocket, Connection>();
 const channelConnections = new Map<string, Set<Connection>>();
 
-export const addConnection = (ws: ServerWebSocket, userId: string): void => {
+export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string): void => {
   if (connections.has(ws)) removeConnection(ws);
 
   connections.set(ws, {
     ws,
     userId,
+    sessionId,
     channels: new Set(),
     lastSeenAt: Date.now(),
     pingSentAt: null,
@@ -96,9 +98,11 @@ export const startHeartbeat = (): (() => void) => {
 
 export const isSubscribed = (ws: ServerWebSocket, channelId: string): boolean => connections.get(ws)?.channels.has(channelId) ?? false;
 
-export const subscribe = (ws: ServerWebSocket, channelId: string): void => {
+export const subscribe = (ws: ServerWebSocket, channelId: string): boolean => {
   const connection = connections.get(ws);
-  if (!connection || connection.channels.has(channelId)) return;
+  if (!connection) return false;
+  if (connection.channels.has(channelId)) return true;
+  if (connection.channels.size >= MAX_SUBSCRIPTIONS) return false;
 
   connection.channels.add(channelId);
 
@@ -109,6 +113,8 @@ export const subscribe = (ws: ServerWebSocket, channelId: string): void => {
   }
 
   subscribers.add(connection);
+
+  return true;
 };
 
 export const unsubscribe = (ws: ServerWebSocket, channelId: string): void => {
@@ -130,6 +136,15 @@ export const unsubscribeUserFromChannel = (userId: string, channelId: string): v
 
   for (const connection of [...subscribers]) {
     if (connection.userId === userId) unsubscribe(connection.ws, channelId);
+  }
+};
+
+export const closeSessionConnections = (sessionId: string): void => {
+  for (const connection of [...connections.values()]) {
+    if (connection.sessionId !== sessionId) continue;
+
+    connection.ws.close(4001, 'Session revoked');
+    removeConnection(connection.ws);
   }
 };
 

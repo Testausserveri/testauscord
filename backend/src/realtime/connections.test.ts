@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from 'bun';
 import { expect, test } from 'bun:test';
-import { HEARTBEAT_TIMEOUT_MS } from './protocol';
-import { addConnection, markAlive, publishToChannel, removeConnection, runHeartbeatSweep, subscribe, unsubscribe, unsubscribeUserFromChannel } from './connections';
+import { HEARTBEAT_TIMEOUT_MS, MAX_SUBSCRIPTIONS } from './protocol';
+import { addConnection, closeSessionConnections, markAlive, publishToChannel, removeConnection, runHeartbeatSweep, subscribe, unsubscribe, unsubscribeUserFromChannel } from './connections';
 
 const createSocket = () => {
   const sent: string[] = [];
@@ -26,8 +26,8 @@ test('publishes only to subscribed sockets and cleans up', () => {
   const b = createSocket();
   const channelId = crypto.randomUUID();
 
-  addConnection(a.ws, 'user-a');
-  addConnection(b.ws, 'user-b');
+  addConnection(a.ws, 'user-a', 'session-a');
+  addConnection(b.ws, 'user-b', 'session-b');
   subscribe(a.ws, channelId);
   subscribe(a.ws, channelId);
   subscribe(b.ws, channelId);
@@ -55,9 +55,9 @@ test('removes a user from a channel across all their connections', () => {
   const b = createSocket();
   const channelId = crypto.randomUUID();
 
-  addConnection(a1.ws, 'user-a');
-  addConnection(a2.ws, 'user-a');
-  addConnection(b.ws, 'user-b');
+  addConnection(a1.ws, 'user-a', 'session-a1');
+  addConnection(a2.ws, 'user-a', 'session-a2');
+  addConnection(b.ws, 'user-b', 'session-b');
   subscribe(a1.ws, channelId);
   subscribe(a2.ws, channelId);
   subscribe(b.ws, channelId);
@@ -76,7 +76,7 @@ test('removes a user from a channel across all their connections', () => {
 
 test('sends pings and closes stale connections', () => {
   const socket = createSocket();
-  addConnection(socket.ws, 'user-heartbeat');
+  addConnection(socket.ws, 'user-heartbeat', 'session-heartbeat');
   const now = Date.now();
 
   runHeartbeatSweep(now);
@@ -95,6 +95,41 @@ test('sends pings and closes stale connections', () => {
 
   expect(socket.closed).toEqual([4008]);
   expect(socket.sent).toHaveLength(2);
+
+  removeConnection(socket.ws);
+});
+
+test('closes connections when their session is revoked', () => {
+  const a = createSocket();
+  const b = createSocket();
+  const channelId = crypto.randomUUID();
+
+  addConnection(a.ws, 'user-a', 'session-a');
+  addConnection(b.ws, 'user-b', 'session-b');
+  subscribe(a.ws, channelId);
+  subscribe(b.ws, channelId);
+
+  closeSessionConnections('session-a');
+  publishToChannel(channelId, 'event');
+
+  expect(a.closed).toEqual([4001]);
+  expect(a.sent).toEqual([]);
+  expect(b.sent).toEqual(['event']);
+
+  removeConnection(b.ws);
+});
+
+test('rejects subscriptions past the cap', () => {
+  const socket = createSocket();
+  const prefix = crypto.randomUUID();
+
+  addConnection(socket.ws, 'user-cap', 'session-cap');
+
+  for (let index = 0; index < MAX_SUBSCRIPTIONS; index++) {
+    expect(subscribe(socket.ws, `${prefix}-${index}`)).toBe(true);
+  }
+
+  expect(subscribe(socket.ws, `${prefix}-over-limit`)).toBe(false);
 
   removeConnection(socket.ws);
 });

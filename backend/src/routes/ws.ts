@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { validateSessionToken } from '../auth/session';
 import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
-import { PROTOCOL_VERSION, pongFrameSchema } from '../realtime/protocol';
+import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
 import { verifyTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
@@ -16,8 +16,8 @@ const subscribeSchema = z.object({
   channelId: z.string(),
 });
 
-const sendError = (ws: ServerWebSocket, message: string) => {
-  ws.send(JSON.stringify({ type: 'error', message }));
+const sendError = (ws: ServerWebSocket, code: ErrorCode, message: string) => {
+  ws.send(JSON.stringify(errorFrame(code, message)));
 };
 
 app.get(
@@ -50,10 +50,11 @@ app.get(
   },
   upgradeWebSocket(async (c) => {
     const userId = c.get('user')!.id;
+    const sessionId = c.get('session')!.id;
 
     return {
       onOpen(_, ctx) {
-        addConnection(ctx.raw as ServerWebSocket, userId);
+        addConnection(ctx.raw as ServerWebSocket, userId, sessionId);
       },
 
       async onMessage(event, ctx) {
@@ -71,11 +72,11 @@ app.get(
           data = JSON.parse(event.data as string);
 
           if (!data.type) {
-            sendError(ws, 'Invalid payload');
+            sendError(ws, 'INVALID_FRAME', 'Invalid payload');
             return;
           }
         } catch (error) {
-          sendError(ws, 'Invalid JSON');
+          sendError(ws, 'INVALID_FRAME', 'Invalid JSON');
           return;
         }
 
@@ -89,7 +90,7 @@ app.get(
           case 'SUBSCRIBE': {
             const result = subscribeSchema.safeParse(data.data);
             if (!result.success) {
-              sendError(ws, 'Invalid payload');
+              sendError(ws, 'INVALID_FRAME', 'Invalid payload');
               return;
             }
 
@@ -98,18 +99,22 @@ app.get(
             if (isSubscribed(ws, channelId)) return;
 
             if (!(await canAccessChannel(connectionUserId, channelId))) {
-              sendError(ws, 'Invalid channel');
+              sendError(ws, 'FORBIDDEN', 'Invalid channel');
               return;
             }
 
-            subscribe(ws, channelId);
+            if (!subscribe(ws, channelId)) {
+              sendError(ws, 'TOO_MANY_SUBSCRIPTIONS', 'Too many subscriptions');
+              return;
+            }
+
             return;
           }
 
           case 'UNSUBSCRIBE': {
             const result = subscribeSchema.safeParse(data.data);
             if (!result.success) {
-              sendError(ws, 'Invalid payload');
+              sendError(ws, 'INVALID_FRAME', 'Invalid payload');
               return;
             }
 
