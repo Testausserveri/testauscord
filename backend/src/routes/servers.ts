@@ -1,11 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { enforceRateLimit } from '../middleware/rateLimit';
 import { unsubscribeUserFromChannel } from '../realtime/connections';
 import type { Variables } from '../types/types';
+import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
 
 const app = new Hono<{ Variables: Variables }>();
+const inviteLimiter = createRateLimiter(10, 60_000);
 
 const serverNameSchema = z.string().trim().min(1).max(100);
 const channelNameSchema = z
@@ -211,6 +214,9 @@ app.post('/:id/invites', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
+
+  const limited = enforceRateLimit(c, inviteLimiter, c.get('user')!.id);
+  if (limited) return limited;
 
   const server = await prisma.server.findFirst({
     where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },

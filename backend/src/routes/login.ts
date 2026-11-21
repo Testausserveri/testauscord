@@ -2,10 +2,16 @@ import { Hono } from 'hono';
 import { prisma } from '../db';
 import { createSession, generateSessionToken } from '../auth/session';
 import { createSessionTokenCookie } from '../auth/cookie';
+import { clientIp, enforceRateLimit } from '../middleware/rateLimit';
+import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono();
+const loginLimiter = createRateLimiter(20, 5 * 60_000);
 
 app.post('/login', async (c) => {
+  const limited = enforceRateLimit(c, loginLimiter, clientIp(c));
+  if (limited) return limited;
+
   const { username, password } = await c.req.json();
 
   if (typeof username !== 'string' || username.length < 3 || username.length > 31 || !/^[a-z0-9_-]+$/.test(username)) {

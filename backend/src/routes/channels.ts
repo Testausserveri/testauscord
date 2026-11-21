@@ -2,10 +2,13 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Variables } from '../types/types';
 import { prisma } from '../db';
+import { enforceRateLimit } from '../middleware/rateLimit';
 import { canAccessChannel } from '../services/access';
 import { buildMessagePage, createChannelMessage, toMessageDto } from '../services/messages';
+import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono<{ Variables: Variables }>();
+const messageLimiter = createRateLimiter(10, 5_000);
 
 const createMessageSchema = z.object({
   content: z
@@ -20,6 +23,9 @@ app.post('/:id/messages', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
+
+  const limited = enforceRateLimit(c, messageLimiter, c.get('user')!.id);
+  if (limited) return limited;
 
   const channelId = c.req.param('id');
   if (!channelId) {

@@ -3,10 +3,16 @@ import { prisma } from '../db';
 import { generateId } from '../utils/utils';
 import { createSession, generateSessionToken } from '../auth/session';
 import { createSessionTokenCookie } from '../auth/cookie';
+import { clientIp, enforceRateLimit } from '../middleware/rateLimit';
+import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono();
+const signupLimiter = createRateLimiter(10, 60 * 60_000);
 
 app.post('/signup', async (c) => {
+  const limited = enforceRateLimit(c, signupLimiter, clientIp(c));
+  if (limited) return limited;
+
   const { username, password } = await c.req.json();
 
   if (typeof username !== 'string' || username.length < 3 || username.length > 31 || !/^[a-z0-9_-]+$/.test(username)) {
