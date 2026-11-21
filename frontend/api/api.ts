@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
-import type { Server, ServerDetail } from '@/types/types';
+import type { CurrentUser, Server, ServerChannel, ServerDetail } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -52,7 +52,7 @@ export const logout = async () => {
   }
 };
 
-export const getUser = async () => {
+export const getUser = async (): Promise<CurrentUser> => {
   return await axios.get(`${API_URL}/users/@me`, { withCredentials: true }).then((res) => res.data);
 };
 
@@ -74,6 +74,18 @@ export const createServer = async (name: string): Promise<Server> => {
 
 export const joinServer = async (code: string): Promise<Server> => {
   return await axios.post(`${API_URL}/servers/join`, { code }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const createChannel = async (serverId: string, name: string): Promise<ServerChannel> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/channels`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const createInvite = async (serverId: string): Promise<{ code: string }> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/invites`, {}, { withCredentials: true }).then((res) => res.data);
+};
+
+export const leaveServer = async (serverId: string) => {
+  await axios.post(`${API_URL}/servers/${serverId}/leave`, {}, { withCredentials: true });
 };
 
 export const getMessages = async (id: string, before?: string) => {

@@ -2,19 +2,21 @@
 
 import { useState } from 'react';
 import type { SubmitEvent } from 'react';
-import axios from 'axios';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MessageCircle, Plus } from 'lucide-react';
-import { createServer, getServers, joinServer } from '@/api/api';
-import { Server } from '@/types/types';
+import { LogOut, MessageCircle, Plus, UserPlus } from 'lucide-react';
+import { createServer, getServers, getUser, joinServer } from '@/api/api';
+import { apiErrorMessage } from '@/lib/apiError';
+import { CurrentUser, Server, ServerAction } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
+import { ServerActionDialogs } from './ServerActionDialogs';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 
 const initials = (name: string) =>
@@ -24,11 +26,6 @@ const initials = (name: string) =>
     .join('')
     .slice(0, 2)
     .toUpperCase();
-
-const errorMessage = (error: unknown) => {
-  if (axios.isAxiosError(error) && typeof error.response?.data === 'string') return error.response.data;
-  return 'Something went wrong';
-};
 
 export function ServerRail() {
   const pathname = usePathname();
@@ -41,11 +38,19 @@ export function ServerRail() {
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionServer, setActionServer] = useState<Server | null>(null);
+  const [action, setAction] = useState<ServerAction | null>(null);
 
   const { data: servers } = useQuery<Server[]>({
     queryKey: ['servers'],
     queryFn: getServers,
     staleTime: 1000 * 20,
+  });
+
+  const { data: user } = useQuery<CurrentUser>({
+    queryKey: ['user'],
+    queryFn: getUser,
+    staleTime: Infinity,
   });
 
   const enterServer = (server: Server) => {
@@ -70,7 +75,7 @@ export function ServerRail() {
     try {
       enterServer(await createServer(name));
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(apiErrorMessage(caught));
     } finally {
       setBusy(false);
     }
@@ -86,7 +91,7 @@ export function ServerRail() {
     try {
       enterServer(await joinServer(code));
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(apiErrorMessage(caught));
     } finally {
       setBusy(false);
     }
@@ -110,14 +115,43 @@ export function ServerRail() {
         const href = firstChannel ? `/channels/${server.id}/${firstChannel.id}` : '/channels/@me';
 
         return (
-          <Link
-            key={server.id}
-            href={href}
-            title={server.name}
-            className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route?.serverId === server.id ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
-          >
-            {initials(server.name)}
-          </Link>
+          <ContextMenu key={server.id}>
+            <ContextMenuTrigger asChild>
+              <Link
+                href={href}
+                title={server.name}
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route?.serverId === server.id ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
+              >
+                {initials(server.name)}
+              </Link>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-56">
+              <ContextMenuItem
+                onSelect={() => {
+                  setActionServer(server);
+                  setAction('invite');
+                }}
+              >
+                <UserPlus />
+                Invite people
+              </ContextMenuItem>
+              {user && user.id !== server.ownerId && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    variant="destructive"
+                    onSelect={() => {
+                      setActionServer(server);
+                      setAction('leave');
+                    }}
+                  >
+                    <LogOut />
+                    Leave server
+                  </ContextMenuItem>
+                </>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         );
       })}
 
@@ -165,6 +199,8 @@ export function ServerRail() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <ServerActionDialogs server={actionServer} action={action} onClose={() => setAction(null)} />
     </nav>
   );
 }

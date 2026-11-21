@@ -1,3 +1,10 @@
+export type CurrentUser = {
+  id: string;
+  username: string;
+};
+
+export type ServerAction = 'invite' | 'leave';
+
 export type Friend = {
   id: string;
   friendsSince: string;
