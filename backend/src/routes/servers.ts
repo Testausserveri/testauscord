@@ -17,6 +17,7 @@ const serverLeaveLimiter = createRateLimiter(10, 60_000);
 const MAX_SERVER_MEMBERSHIPS = 200;
 const MAX_CHANNELS_PER_SERVER = 50;
 const MAX_INVITES_PER_SERVER = 50;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 
 const serverNameSchema = z.string().trim().min(1).max(100);
 const channelNameSchema = z
@@ -120,12 +121,15 @@ app.post('/join', async (c) => {
   const invite = await prisma.serverInvite.findUnique({
     where: { code: result.data.code },
     select: {
+      id: true,
       serverId: true,
+      expiresAt: true,
       server: { select: serverSelect },
     },
   });
 
-  if (!invite) {
+  if (!invite || invite.expiresAt.getTime() <= Date.now()) {
+    if (invite) await prisma.serverInvite.deleteMany({ where: { id: invite.id } });
     return c.text('Invalid invite code', 404);
   }
 
@@ -243,6 +247,34 @@ app.post('/:id/channels', async (c) => {
   }
 });
 
+app.get('/:id/invites', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const server = await prisma.server.findFirst({
+    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
+    select: { id: true },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  const invites = await prisma.serverInvite.findMany({
+    where: { serverId: server.id, expiresAt: { gt: new Date() } },
+    select: {
+      code: true,
+      createdAt: true,
+      expiresAt: true,
+      createdBy: { select: { id: true, username: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return c.json(invites, 200);
+});
+
 app.post('/:id/invites', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
@@ -259,6 +291,8 @@ app.post('/:id/invites', async (c) => {
   if (!server) {
     return c.text('Server not found', 404);
   }
+
+  await prisma.serverInvite.deleteMany({ where: { serverId: server.id, expiresAt: { lte: new Date() } } });
 
   const invites = await prisma.serverInvite.count({ where: { serverId: server.id } });
   if (invites >= MAX_INVITES_PER_SERVER) {
@@ -279,11 +313,87 @@ app.post('/:id/invites', async (c) => {
       code: createInviteCode(),
       serverId: server.id,
       createdById: c.get('user')!.id,
+      expiresAt: new Date(Date.now() + INVITE_TTL_MS),
     },
     select: { code: true },
   });
 
   return c.json(invite, 201);
+});
+
+app.delete('/:id/invites/:code', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const server = await prisma.server.findFirst({
+    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  const invite = await prisma.serverInvite.findUnique({
+    where: { code: c.req.param('code') },
+    select: { id: true, serverId: true, createdById: true },
+  });
+
+  if (!invite || invite.serverId !== server.id) {
+    return c.text('Invite not found', 404);
+  }
+
+  if (invite.createdById !== c.get('user')!.id && server.ownerId !== c.get('user')!.id) {
+    return c.text('Only the invite creator or server owner can revoke it', 403);
+  }
+
+  await prisma.serverInvite.delete({ where: { id: invite.id } });
+
+  return c.body(null, 204);
+});
+
+app.delete('/:id/members/:userId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const server = await prisma.server.findUnique({
+    where: { id: c.req.param('id') },
+    select: { id: true, ownerId: true, channels: { select: { id: true } } },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (server.ownerId !== c.get('user')!.id) {
+    return c.text('Only the server owner can remove members', 403);
+  }
+
+  const targetId = c.req.param('userId');
+
+  if (targetId === server.ownerId) {
+    return c.text('The server owner cannot be removed', 400);
+  }
+
+  const membership = await prisma.serverMember.findUnique({
+    where: { serverId_userId: { serverId: server.id, userId: targetId } },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    return c.text('Member not found', 404);
+  }
+
+  await prisma.serverMember.delete({ where: { id: membership.id } });
+  await prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } });
+
+  for (const channel of server.channels) {
+    unsubscribeUserFromChannel(targetId, channel.id);
+  }
+
+  return c.body(null, 204);
 });
 
 app.post('/:id/leave', async (c) => {
