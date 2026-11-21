@@ -6,7 +6,7 @@ import { validateSessionId } from '../auth/session';
 import { addConnection, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
-import { verifyTicket } from '../realtime/ticket';
+import { redeemTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
 import type { Variables } from '../types/types';
 
@@ -32,7 +32,7 @@ app.get(
     }
 
     const ticket = c.req.query('ticket');
-    const payload = ticket ? verifyTicket(ticket) : null;
+    const payload = ticket ? redeemTicket(ticket) : null;
 
     if (!payload) {
       return c.text('Unauthorized', 401);
