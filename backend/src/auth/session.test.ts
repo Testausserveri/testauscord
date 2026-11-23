@@ -12,7 +12,7 @@ const row = {
   user,
 };
 
-const findUnique = mock(async ({ where }: { where: { id: string } }) => (where.id === sessionId ? row : null));
+const findUnique = mock(async ({ where }: { where: { id: string }; select?: unknown }) => (where.id === sessionId ? row : null));
 const create = mock(async (args: { data: { id: string } }) => args.data);
 const update = mock(async () => row);
 
@@ -54,4 +54,22 @@ test('validateSessionId looks up stored ids directly', async () => {
   const result = await validateSessionId(sessionId);
 
   expect(result.session?.id).toBe(sessionId);
+});
+
+test('selects only the fields the request context needs', async () => {
+  await validateSessionId(sessionId);
+
+  const call = findUnique.mock.calls[findUnique.mock.calls.length - 1]?.[0];
+
+  expect(call?.select).toEqual({
+    id: true,
+    userId: true,
+    expiresAt: true,
+    user: {
+      select: {
+        id: true,
+        username: true,
+      },
+    },
+  });
 });

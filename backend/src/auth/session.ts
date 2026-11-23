@@ -1,5 +1,6 @@
-import type { User, Session } from '../generated/prisma/client';
+import type { Session } from '../generated/prisma/client';
 import { prisma } from '../db';
+import type { AuthSession, AuthUser } from '../types/types';
 import { encodeBase32LowerCaseNoPadding, encodeHexLowerCase } from '@oslojs/encoding';
 import { sha256 } from '@oslojs/crypto/sha2';
 import crypto from 'node:crypto';
@@ -27,10 +28,13 @@ export const createSession = async (token: string, userId: string): Promise<Sess
   return session;
 };
 
-export const getSession = async (sessionId: string): Promise<Session | null> => {
+export const getSession = async (sessionId: string): Promise<{ expiresAt: Date } | null> => {
   return prisma.session.findUnique({
     where: {
       id: sessionId,
+    },
+    select: {
+      expiresAt: true,
     },
   });
 };
@@ -44,8 +48,16 @@ export const validateSessionId = async (sessionId: string): Promise<SessionValid
     where: {
       id: sessionId,
     },
-    include: {
-      user: true,
+    select: {
+      id: true,
+      userId: true,
+      expiresAt: true,
+      user: {
+        select: {
+          id: true,
+          username: true,
+        },
+      },
     },
   });
 
@@ -88,4 +100,4 @@ export const invalidateAllSessions = async (userId: string): Promise<void> => {
   });
 };
 
-export type SessionValidationResult = { session: Session; user: User } | { session: null; user: null };
+export type SessionValidationResult = { session: AuthSession; user: AuthUser } | { session: null; user: null };
