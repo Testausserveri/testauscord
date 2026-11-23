@@ -1,8 +1,21 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
+import { queryClient } from '@/lib/queryClient';
 import type { CurrentUser, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
+// Drop cached private data and send to the login on expired/revoked session
+axios.interceptors.response.use(undefined, (error: AxiosError) => {
+  if (error.response?.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    queryClient.clear();
+    // no router outside a component, and a reload drops any remaining state
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign('/login');
+  }
+
+  return Promise.reject(error);
+});
 
 export const signup = async (username: string, password: string) => {
   try {

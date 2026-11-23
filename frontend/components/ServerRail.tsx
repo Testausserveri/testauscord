@@ -6,13 +6,15 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, MessageCircle, Plus, Ticket, UserPlus, Users } from 'lucide-react';
-import { createServer, getServers, getUser, joinServer } from '@/api/api';
+import { createServer, getServers, getUser, joinServer, logout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
+import { toast } from 'sonner';
 import { CurrentUser, Server, ServerAction } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
 import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
@@ -37,6 +39,8 @@ export function ServerRail() {
   const [serverName, setServerName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionServer, setActionServer] = useState<Server | null>(null);
   const [action, setAction] = useState<ServerAction | null>(null);
@@ -95,6 +99,22 @@ export function ServerRail() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    const result = await logout();
+
+    if (!result.success) {
+      toast.error(String(result.msg ?? 'Could not log out'));
+      setLoggingOut(false);
+      return;
+    }
+
+    queryClient.clear();
+    router.push('/login');
   };
 
   return (
@@ -222,6 +242,33 @@ export function ServerRail() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <button
+        type="button"
+        onClick={() => setLogoutOpen(true)}
+        title="Log out"
+        aria-label="Log out"
+        className="mt-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
+      >
+        <LogOut className="h-5 w-5" />
+      </button>
+
+      <Dialog open={logoutOpen} onOpenChange={(open) => !loggingOut && setLogoutOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription>You will need to log in again to access your messages.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLogoutOpen(false)} disabled={loggingOut}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleLogout} disabled={loggingOut}>
+              Log out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ServerActionDialogs server={actionServer} action={action} onClose={() => setAction(null)} />
     </nav>
