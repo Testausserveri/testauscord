@@ -17,6 +17,10 @@ const app = new Hono();
 
 app.use(enforceTrustedOrigin());
 app.use(secureHeaders());
+app.use('*', async (c, next) => {
+  c.header('Cache-Control', 'no-store');
+  await next();
+});
 app.use(auth);
 app.use('/*', cors({ origin: Bun.env.FRONTEND_URL || '', credentials: true }));
 
