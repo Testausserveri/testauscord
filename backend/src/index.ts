@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
-import { csrf } from 'hono/csrf';
 import { cors } from 'hono/cors';
 import auth from './middleware/auth';
+import { enforceTrustedOrigin } from './middleware/origin';
 import signup from './routes/signup';
 import login from './routes/login';
 import users from './routes/users';
@@ -15,7 +15,7 @@ import servers from './routes/servers';
 
 const app = new Hono();
 
-app.use(csrf({ origin: Bun.env.FRONTEND_URL || '' }));
+app.use(enforceTrustedOrigin());
 app.use(secureHeaders());
 app.use(auth);
 app.use('/*', cors({ origin: Bun.env.FRONTEND_URL || '', credentials: true }));
