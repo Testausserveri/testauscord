@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { SubmitEvent } from 'react';
 import { toast } from 'sonner';
 import { changePassword } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
+import { useSettled } from '@/lib/useSettled';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { PasswordInput } from './PasswordInput';
 
 const PASSWORD_PATTERN = /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/;
-const SETTLE_MS = 700;
 
 type Props = {
   open: boolean;
@@ -22,8 +22,8 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [newSettled, setNewSettled] = useState(false);
-  const [confirmSettled, setConfirmSettled] = useState(false);
+  const [newSettled, setNewSettled] = useSettled(newPassword);
+  const [confirmSettled, setConfirmSettled] = useSettled(confirmPassword);
   const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -31,18 +31,6 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
   const showPolicyError = newSettled && newPassword.length > 0 && !validPassword;
   const showMismatch = confirmSettled && confirmPassword.length > 0 && !passwordsMatch;
-
-  useEffect(() => {
-    if (!newPassword) return;
-    const timer = setTimeout(() => setNewSettled(true), SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [newPassword]);
-
-  useEffect(() => {
-    if (!confirmPassword) return;
-    const timer = setTimeout(() => setConfirmSettled(true), SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [confirmPassword]);
 
   const reset = () => {
     setCurrentPassword('');
@@ -101,9 +89,8 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="current-password">Current password</Label>
-            <Input
+            <PasswordInput
               id="current-password"
-              type="password"
               autoComplete="current-password"
               maxLength={255}
               value={currentPassword}
@@ -118,9 +105,8 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="new-password">New password</Label>
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               autoComplete="new-password"
               maxLength={255}
               value={newPassword}
@@ -137,9 +123,8 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="confirm-password">Confirm new password</Label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               autoComplete="new-password"
               maxLength={255}
               value={confirmPassword}

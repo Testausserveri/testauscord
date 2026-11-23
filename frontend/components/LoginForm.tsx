@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordInput } from './PasswordInput';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { login } from '@/api/api';
@@ -57,7 +58,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               <div className="flex items-center">
                 <Label htmlFor="password">Password</Label>
               </div>
-              <Input id="password" type="password" onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput id="password" autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
             </div>
             <Button className="w-full" onClick={() => onLogin()}>
               Login
