@@ -84,6 +84,7 @@ model FriendRequest {
   receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, receiverId])
+  @@index([receiverId])
 }
 
 model Friendship {
@@ -105,6 +106,8 @@ model Session {
   expiresAt DateTime
 
   user User @relation(references: [id], fields: [userId], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Channel {
