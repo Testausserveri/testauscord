@@ -7,6 +7,7 @@ import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono();
 const loginLimiter = createRateLimiter(20, 5 * 60_000);
+const dummyPasswordHash = await Bun.password.hash('dummy-password');
 
 app.post('/login', async (c) => {
   const limited = enforceRateLimit(c, loginLimiter, clientIp(c));
@@ -28,13 +29,9 @@ app.post('/login', async (c) => {
     where: { username: username },
   });
 
-  if (!existingUser) {
-    return c.text('Incorrect username or password', 401);
-  }
+  const validPassword = await Bun.password.verify(password, existingUser?.password ?? dummyPasswordHash);
 
-  const validPassword = await Bun.password.verify(password, existingUser.password);
-
-  if (!validPassword) {
+  if (!existingUser || !validPassword) {
     return c.text('Incorrect username or password', 401);
   }
 
