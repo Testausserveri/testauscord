@@ -1,7 +1,9 @@
+export const SESSION_COOKIE_NAME = '__Host-session';
+
 export const createSessionTokenCookie = (token: string, expiresAt: Date): string => {
-  return `session=${token}; HttpOnly; SameSite=Lax; Expires=${expiresAt.toUTCString()}; Path=/; ${Bun.env.NODE_ENV === 'production' ? 'Secure;' : ''}`;
+  return `${SESSION_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Expires=${expiresAt.toUTCString()}; Path=/`;
 };
 
 export const deleteSessionTokenCookie = (): string => {
-  return `session=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/; ${Bun.env.NODE_ENV === 'production' ? 'Secure;' : ''}`;
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/`;
 };

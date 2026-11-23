@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export function proxy(request: NextRequest) {
-  const cookie = request.cookies.get('session');
+  const cookie = request.cookies.get('__Host-session');
 
   if (
     !request.nextUrl.pathname.startsWith('/login') &&

@@ -1,7 +1,7 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { validateSessionToken } from '../auth/session';
-import { createSessionTokenCookie, deleteSessionTokenCookie } from '../auth/cookie';
+import { SESSION_COOKIE_NAME, createSessionTokenCookie, deleteSessionTokenCookie } from '../auth/cookie';
 
 const auth = async (c: Context, next: Next) => {
   let sessionToken = null;
@@ -11,7 +11,7 @@ const auth = async (c: Context, next: Next) => {
   if (authorization) {
     sessionToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : authorization;
   } else {
-    sessionToken = getCookie(c, 'session') ?? null;
+    sessionToken = getCookie(c, SESSION_COOKIE_NAME) ?? null;
   }
 
   if (!sessionToken) {
