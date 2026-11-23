@@ -5,6 +5,7 @@ import auth from './middleware/auth';
 import { enforceTrustedOrigin } from './middleware/origin';
 import signup from './routes/signup';
 import login from './routes/login';
+import account from './routes/account';
 import users from './routes/users';
 import logout from './routes/logout';
 import friends from './routes/friends';
@@ -26,6 +27,7 @@ app.use('/*', cors({ origin: Bun.env.FRONTEND_URL || '', credentials: true }));
 
 app.route('/', signup);
 app.route('/', login);
+app.route('/', account);
 app.route('/', users);
 app.route('/', logout);
 app.route('/friends', friends);

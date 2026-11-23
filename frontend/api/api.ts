@@ -65,6 +65,10 @@ export const logout = async () => {
   }
 };
 
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+  await axios.post(`${API_URL}/account/password`, { currentPassword, newPassword }, { withCredentials: true });
+};
+
 export const getUser = async (): Promise<CurrentUser> => {
   return await axios.get(`${API_URL}/users/@me`, { withCredentials: true }).then((res) => res.data);
 };

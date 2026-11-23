@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, MessageCircle, Plus, Ticket, UserPlus, Users } from 'lucide-react';
+import { LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
 import { createServer, getServers, getUser, joinServer, logout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
+import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { ServerActionDialogs } from './ServerActionDialogs';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 
@@ -39,6 +40,7 @@ export function ServerRail() {
   const [serverName, setServerName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,13 +247,25 @@ export function ServerRail() {
 
       <button
         type="button"
+        onClick={() => setSettingsOpen(true)}
+        title="Account settings"
+        aria-label="Account settings"
+        className="mt-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
+      >
+        <Settings className="h-5 w-5" />
+      </button>
+
+      <button
+        type="button"
         onClick={() => setLogoutOpen(true)}
         title="Log out"
         aria-label="Log out"
-        className="mt-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
+        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
       >
         <LogOut className="h-5 w-5" />
       </button>
+
+      <AccountSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <Dialog open={logoutOpen} onOpenChange={(open) => !loggingOut && setLogoutOpen(open)}>
         <DialogContent>
