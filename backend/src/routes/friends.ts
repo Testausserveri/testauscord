@@ -10,6 +10,7 @@ import { directChannelKey, friendPair } from '../services/directMessages';
 const app = new Hono<{ Variables: Variables }>();
 const friendRequestLimiter = createRateLimiter(10, 60 * 60_000);
 const friendMutationLimiter = createRateLimiter(60, 60_000);
+const friendRequestResponse = 'If that user exists, a friend request has been sent';
 
 const isValidUsername = (value: unknown): value is string => {
   return typeof value === 'string' && value.length >= 3 && value.length <= 31 && /^[a-z0-9_-]+$/.test(value);
@@ -36,19 +37,21 @@ app.post('/sendRequest', async (c) => {
 
   const targetUser = await prisma.user.findUnique({
     where: { username: target },
+    select: { id: true },
   });
 
   if (!targetUser) {
-    return c.text('User not found', 404);
+    return c.text(friendRequestResponse, 202);
   }
 
   const pair = friendPair(c.get('user')!.id, targetUser.id);
   const existingFriendship = await prisma.friendship.findUnique({
     where: { userAId_userBId: pair },
+    select: { id: true },
   });
 
   if (existingFriendship) {
-    return c.text('You are already friends with this user', 409);
+    return c.text(friendRequestResponse, 202);
   }
 
   const pendingRequest = await prisma.friendRequest.findFirst({
@@ -58,14 +61,11 @@ app.post('/sendRequest', async (c) => {
         { senderId: targetUser.id, receiverId: c.get('user')!.id },
       ],
     },
+    select: { id: true },
   });
 
   if (pendingRequest) {
-    if (pendingRequest.senderId === c.get('user')!.id) {
-      return c.text('You have already sent a friend request to this user', 409);
-    }
-
-    return c.text('This user has already sent you a friend request', 409);
+    return c.text(friendRequestResponse, 202);
   }
 
   await prisma.friendRequest.create({
@@ -76,7 +76,7 @@ app.post('/sendRequest', async (c) => {
     },
   });
 
-  return c.text('Friend request sent', 201);
+  return c.text(friendRequestResponse, 202);
 });
 
 app.post('/respondToRequest', async (c) => {
