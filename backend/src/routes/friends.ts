@@ -23,7 +23,8 @@ app.post('/sendRequest', async (c) => {
   const limited = enforceRateLimit(c, friendRequestLimiter, c.get('user')!.id);
   if (limited) return limited;
 
-  const { target } = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  const target = body?.target;
 
   if (!isValidUsername(target)) {
     return c.text('Invalid username', 400);
@@ -86,7 +87,9 @@ app.post('/respondToRequest', async (c) => {
   const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
   if (limited) return limited;
 
-  const { requestId, accepted } = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  const requestId = body?.requestId;
+  const accepted = body?.accepted;
 
   if (typeof requestId !== 'string' || requestId.length === 0) {
     return c.text('Invalid request id', 400);
@@ -167,7 +170,8 @@ app.post('/cancelRequest', async (c) => {
   const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
   if (limited) return limited;
 
-  const { requestId } = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  const requestId = body?.requestId;
 
   if (typeof requestId !== 'string' || requestId.length === 0) {
     return c.text('Invalid request id', 400);
@@ -196,7 +200,8 @@ app.post('/remove', async (c) => {
   const limited = enforceRateLimit(c, friendMutationLimiter, c.get('user')!.id);
   if (limited) return limited;
 
-  const { target } = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  const target = body?.target;
 
   if (!isValidUsername(target)) {
     return c.text('Invalid username', 400);

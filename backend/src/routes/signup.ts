@@ -13,13 +13,15 @@ app.post('/signup', async (c) => {
   const limited = enforceRateLimit(c, signupLimiter, clientIp(c));
   if (limited) return limited;
 
-  const { username, password } = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  const username = body?.username;
+  const password = body?.password;
 
   if (typeof username !== 'string' || username.length < 3 || username.length > 31 || !/^[a-z0-9_-]+$/.test(username)) {
     return c.text('Invalid username', 400);
   }
 
-  if (typeof username !== 'string' || password.length < 8 || password.length > 255 || !/^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/.test(password)) {
+  if (typeof password !== 'string' || password.length < 8 || password.length > 255 || !/^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/.test(password)) {
     return c.text('Invalid password', 400);
   }
 
