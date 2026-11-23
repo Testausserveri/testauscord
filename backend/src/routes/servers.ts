@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
@@ -45,9 +46,8 @@ const isUniqueConstraintError = (error: unknown): boolean => {
 
 const INVITE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-const createInviteCode = (): string => {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  return Array.from(bytes, (byte) => INVITE_ALPHABET.charAt(byte % INVITE_ALPHABET.length)).join('');
+export const createInviteCode = (): string => {
+  return Array.from({ length: 8 }, () => INVITE_ALPHABET.charAt(crypto.randomInt(INVITE_ALPHABET.length))).join('');
 };
 
 app.post('/create', async (c) => {
