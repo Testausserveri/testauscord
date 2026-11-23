@@ -12,6 +12,9 @@
     "prisma": "^7.10.1",
     "typescript": "^7.0.2"
   },
+  "overrides": {
+    "effect": "3.22.1"
+  },
   "dependencies": {
     "@hono/bun": "^1.0.1",
     "@oslojs/crypto": "^1.0.1",
