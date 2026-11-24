@@ -4,16 +4,18 @@ import { useState } from 'react';
 import type { SubmitEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { changePassword, getSessions, revokeAllSessions, revokeSession } from '@/api/api';
+import { changePassword, getSessions, getUser, revokeAllSessions, revokeSession } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { logoutToLogin } from '@/lib/logout';
 import { useSettled } from '@/lib/useSettled';
-import type { AccountSession } from '@/types/types';
+import type { AccountSession, CurrentUser } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { PasswordInput } from './PasswordInput';
+import { useProfilePopover } from './ProfilePopoverProvider';
+import { UserAvatar } from './UserAvatar';
 
 const PASSWORD_PATTERN = /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/;
 
@@ -50,6 +52,7 @@ type Props = {
 
 export function AccountSettingsDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
+  const { openEditProfile } = useProfilePopover();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -63,6 +66,12 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     queryKey: ['account-sessions'],
     queryFn: getSessions,
     enabled: open,
+  });
+
+  const { data: user } = useQuery<CurrentUser>({
+    queryKey: ['user'],
+    queryFn: getUser,
+    staleTime: Infinity,
   });
 
   const validPassword = newPassword.length <= 255 && PASSWORD_PATTERN.test(newPassword);
@@ -154,8 +163,21 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
-          <DialogDescription>Manage your password and signed-in sessions.</DialogDescription>
+          <DialogDescription>Manage your profile, password and signed-in sessions.</DialogDescription>
         </DialogHeader>
+
+        <div className="flex items-center gap-3">
+          {user && <UserAvatar user={user} className="h-12 w-12" />}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{user ? (user.displayName ?? user.username) : 'Loading profile...'}</p>
+            {user && <p className="truncate text-xs text-muted-foreground">@{user.username}</p>}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={openEditProfile} disabled={!user}>
+            Edit profile
+          </Button>
+        </div>
+
+        <Separator />
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">

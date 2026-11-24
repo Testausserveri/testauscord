@@ -8,6 +8,12 @@ export type ProfileDTO = UserRef & {
   bio: string | null;
 };
 
+export type ProfilePatch = {
+  username?: string;
+  displayName?: string | null;
+  bio?: string | null;
+};
+
 export type CurrentUser = ProfileDTO;
 
 export type AccountSession = {

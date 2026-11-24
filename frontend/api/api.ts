@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
 import { logoutToLogin } from '@/lib/logout';
-import type { AccountSession, CurrentUser, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
+import type { AccountSession, CurrentUser, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO, ProfilePatch, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -84,6 +84,10 @@ export const getUser = async (): Promise<CurrentUser> => {
 
 export const getUserProfile = async (id: string): Promise<ProfileDTO> => {
   return await axios.get(`${API_URL}/users/${encodeURIComponent(id)}`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updateProfile = async (patch: ProfilePatch): Promise<ProfileDTO> => {
+  return await axios.patch(`${API_URL}/users/@me`, patch, { withCredentials: true }).then((res) => res.data);
 };
 
 export const getFriends = async () => {

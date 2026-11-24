@@ -9,6 +9,7 @@ import { CurrentUser, Server, ServerAction, ServerDetail, ServerInvite } from '@
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
+import { useProfilePopover } from './ProfilePopoverProvider';
 import { ServerSettingsDialog } from './ServerSettingsDialog';
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
 export function ServerActionDialogs({ server, action, onClose }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { openProfile } = useProfilePopover();
   const [invite, setInvite] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -199,10 +201,10 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
             <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
               {detail.members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
-                  <div className="min-w-0">
+                  <button type="button" onClick={(event) => openProfile(member.id, event.currentTarget)} title="View profile" className="min-w-0 rounded-sm text-left hover:underline">
                     <p className="truncate text-sm font-medium">{member.displayName ?? member.username}</p>
                     <p className="text-xs text-muted-foreground">Joined {new Date(member.joinedAt).toLocaleDateString()}</p>
-                  </div>
+                  </button>
                   {member.id === server?.ownerId ? (
                     <span className="text-xs text-muted-foreground">Owner</span>
                   ) : isOwner ? (

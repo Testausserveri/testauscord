@@ -17,9 +17,10 @@ export type ProfileTarget = {
 type Props = {
   target: ProfileTarget | null;
   onClose: () => void;
+  onEditProfile: () => void;
 };
 
-export function ProfilePopover({ target, onClose }: Props) {
+export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
   const router = useRouter();
   const open = Boolean(target);
   const userId = target?.userId ?? null;
@@ -106,9 +107,13 @@ export function ProfilePopover({ target, onClose }: Props) {
                 <p className="whitespace-pre-wrap break-words text-sm">{profile.bio ?? 'No bio yet.'}</p>
               </div>
 
-              {hasActions && (
+              {(isSelf || hasActions) && (
                 <div className="flex justify-end gap-2 border-t p-3">
-                  {friendship ? (
+                  {isSelf ? (
+                    <Button type="button" onClick={onEditProfile}>
+                      Edit profile
+                    </Button>
+                  ) : friendship ? (
                     <Button type="button" onClick={openDm}>
                       Message
                     </Button>
