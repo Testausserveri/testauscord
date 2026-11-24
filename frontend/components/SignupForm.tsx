@@ -85,7 +85,13 @@ export function SignupForm({ className, ...props }: React.ComponentPropsWithoutR
           <CardDescription>Enter a username and password below to register a new account</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-6">
+          <form
+            className="flex flex-col gap-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSignup();
+            }}
+          >
             <div className="grid gap-2">
               <Label htmlFor="username">Username</Label>
               <Input
@@ -136,10 +142,10 @@ export function SignupForm({ className, ...props }: React.ComponentPropsWithoutR
               {showMismatch && <p className="text-destructive text-xs">Passwords do not match</p>}
             </div>
             <p className="text-muted-foreground text-xs">At least 8 characters with upper and lower case, a number and a special character.</p>
-            <Button className="w-full" onClick={() => onSignup()} disabled={!validUsername || !validPassword || !passwordsMatch}>
+            <Button type="submit" className="w-full" disabled={!validUsername || !validPassword || !passwordsMatch}>
               Sign up
             </Button>
-          </div>
+          </form>
           <div className="mt-4 text-center text-sm">
             Already have an account?{' '}
             <a href="/login" className="underline underline-offset-4">

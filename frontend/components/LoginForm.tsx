@@ -49,7 +49,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
           <CardDescription>Enter your username and password below to login to your account</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-6">
+          <form
+            className="flex flex-col gap-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onLogin();
+            }}
+          >
             <div className="grid gap-2">
               <Label htmlFor="username">Username</Label>
               <Input id="username" type="username" onChange={(e) => setUsername(e.target.value)} />
@@ -60,10 +66,10 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               </div>
               <PasswordInput id="password" autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
             </div>
-            <Button className="w-full" onClick={() => onLogin()}>
+            <Button type="submit" className="w-full" disabled={!username.trim() || !password.trim()}>
               Login
             </Button>
-          </div>
+          </form>
           <div className="mt-4 text-center text-sm">
             Don&apos;t have an account?{' '}
             <a href="/signup" className="underline underline-offset-4">
