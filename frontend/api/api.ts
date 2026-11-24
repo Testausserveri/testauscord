@@ -1,7 +1,19 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
 import { logoutToLogin } from '@/lib/logout';
-import type { AccountSession, CurrentUser, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO, ProfilePatch, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
+import type {
+  AccountSession,
+  CurrentUser,
+  IncomingFriendRequest,
+  OutgoingFriendRequest,
+  ProfileDTO,
+  ProfilePatch,
+  Server,
+  ServerCategory,
+  ServerChannel,
+  ServerDetail,
+  ServerInvite,
+} from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -130,8 +142,24 @@ export const joinServer = async (code: string): Promise<Server> => {
   return await axios.post(`${API_URL}/servers/join`, { code }, { withCredentials: true }).then((res) => res.data);
 };
 
-export const createChannel = async (serverId: string, name: string): Promise<ServerChannel> => {
-  return await axios.post(`${API_URL}/servers/${serverId}/channels`, { name }, { withCredentials: true }).then((res) => res.data);
+export const createChannel = async (serverId: string, name: string, categoryId?: string): Promise<ServerChannel> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/channels`, categoryId ? { name, categoryId } : { name }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updateChannelCategory = async (serverId: string, channelId: string, categoryId: string | null): Promise<ServerChannel> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}/channels/${channelId}`, { categoryId }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const createCategory = async (serverId: string, name: string): Promise<ServerCategory> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/categories`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updateCategory = async (serverId: string, categoryId: string, name: string): Promise<ServerCategory> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}/categories/${categoryId}`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const deleteCategory = async (serverId: string, categoryId: string) => {
+  await axios.delete(`${API_URL}/servers/${serverId}/categories/${categoryId}`, { withCredentials: true });
 };
 
 export const renameServer = async (serverId: string, name: string): Promise<{ id: string; name: string }> => {
