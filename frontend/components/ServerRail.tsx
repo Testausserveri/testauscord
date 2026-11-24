@@ -178,6 +178,15 @@ export function ServerRail() {
                     <Ticket />
                     Active invites
                   </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setActionServer(server);
+                      setAction('settings');
+                    }}
+                  >
+                    <Settings />
+                    Server settings
+                  </ContextMenuItem>
                 </>
               )}
               {user && user.id !== server.ownerId && (

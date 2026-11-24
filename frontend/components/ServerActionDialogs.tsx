@@ -9,6 +9,7 @@ import { CurrentUser, Server, ServerAction, ServerDetail, ServerInvite } from '@
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
+import { ServerSettingsDialog } from './ServerSettingsDialog';
 
 type Props = {
   server: Server | null;
@@ -238,6 +239,8 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {action === 'settings' && <ServerSettingsDialog server={server} onClose={close} />}
     </>
   );
 }

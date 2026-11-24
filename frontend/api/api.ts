@@ -106,6 +106,10 @@ export const createChannel = async (serverId: string, name: string): Promise<Ser
   return await axios.post(`${API_URL}/servers/${serverId}/channels`, { name }, { withCredentials: true }).then((res) => res.data);
 };
 
+export const renameServer = async (serverId: string, name: string): Promise<{ id: string; name: string }> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
 export const createInvite = async (serverId: string): Promise<{ code: string }> => {
   return await axios.post(`${API_URL}/servers/${serverId}/invites`, {}, { withCredentials: true }).then((res) => res.data);
 };

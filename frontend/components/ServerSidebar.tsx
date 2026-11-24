@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Hash, LogOut, Plus, Ticket, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, Hash, LogOut, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
 import { createChannel, getServers, getUser } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { CurrentUser, Server, ServerAction } from '@/types/types';
@@ -120,6 +120,10 @@ export function ServerSidebar() {
                 <DropdownMenuItem onSelect={() => setAction('invites')}>
                   <Ticket />
                   Active invites
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setAction('settings')}>
+                  <Settings />
+                  Server settings
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setChannelDialogOpen(true)}>
                   <Plus />
