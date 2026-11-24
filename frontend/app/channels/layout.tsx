@@ -11,6 +11,7 @@ import { SidebarInset } from '@/components/ui/sidebar';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { ServerMembershipEvents } from '@/components/ServerMembershipEvents';
 import { UserEvents } from '@/components/UserEvents';
+import { FriendEvents } from '@/components/FriendEvents';
 import { ProfilePopoverProvider } from '@/components/ProfilePopoverProvider';
 import { getServerRoute } from '@/lib/serverRoutes';
 
@@ -23,6 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <ProfilePopoverProvider>
         <ServerMembershipEvents />
         <UserEvents />
+        <FriendEvents />
         <SidebarProvider>
           <div className="flex h-screen w-full">
             <ServerRail />

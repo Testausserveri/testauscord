@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { eventBus, type DomainEvent } from '../realtime/bus';
 import { friendPair } from '../services/directMessages';
 import type { Variables } from '../types/types';
 
@@ -22,10 +23,12 @@ let channels: ChannelRow[] = [];
 let members: MemberRow[] = [];
 let failRequestCreate = false;
 let beforeRequestDelete: (() => void) | null = null;
+let events: DomainEvent[] = [];
+let stopEvents: (() => void) | null = null;
 
-const findUser = mock(async ({ where }: { where: { username: string } }) => {
-  const user = users.find((entry) => entry.username === where.username);
-  return user ? { id: user.id } : null;
+const findUser = mock(async ({ where }: { where: { username?: string; id?: string } }) => {
+  const user = where.id !== undefined ? users.find((entry) => entry.id === where.id) : users.find((entry) => entry.username === where.username);
+  return user ? { id: user.id, username: user.username, displayName: user.displayName } : null;
 });
 
 const findFriendship = mock(async ({ where }: { where: FriendshipWhere }) => {
@@ -174,6 +177,13 @@ beforeEach(() => {
   members = [];
   failRequestCreate = false;
   beforeRequestDelete = null;
+  events = [];
+  stopEvents = eventBus.subscribe((event) => events.push(event));
+});
+
+afterEach(() => {
+  stopEvents?.();
+  stopEvents = null;
 });
 
 afterAll(() => mock.restore());
@@ -199,6 +209,13 @@ test('returns the same opaque response for missing, pending and reverse requests
   expect(requests).toHaveLength(1);
   expect(requests[0]!.senderId).toBe(sender.id);
   expect(requests[0]!.receiverId).toBe(bob.id);
+  expect(events).toEqual([
+    {
+      type: 'FRIEND_REQUEST_CREATE',
+      request: { id: requests[0]!.id, createdAt: requests[0]!.createdAt.toISOString(), sender: { id: sender.id, username: 'sender', displayName: null } },
+      recipientIds: [bob.id],
+    },
+  ]);
 });
 
 test('returns the same opaque response when already friends', async () => {
@@ -210,6 +227,7 @@ test('returns the same opaque response when already friends', async () => {
 
   expect(response.status).toBe(202);
   expect(requests).toEqual([]);
+  expect(events).toEqual([]);
 });
 
 test('rejects self requests and invalid usernames', async () => {
@@ -221,6 +239,7 @@ test('rejects self requests and invalid usernames', async () => {
   expect(self.status).toBe(400);
   expect(invalid.status).toBe(400);
   expect(requests).toEqual([]);
+  expect(events).toEqual([]);
 });
 
 test('treats a unique constraint race on create as sent', async () => {
@@ -230,6 +249,7 @@ test('treats a unique constraint race on create as sent', async () => {
   const response = await post(createApp(sender), '/sendRequest', { target: 'bob' });
 
   expect(response.status).toBe(202);
+  expect(events).toEqual([]);
 });
 
 test('requires authentication', async () => {
@@ -254,6 +274,7 @@ test('accepts a request, creates the friendship and DM, and removes the reverse 
   expect(channels[0]!.dmKey).toBe(`${alice.id}:${bob.id}`);
   expect(members).toHaveLength(2);
   expect(members.map((member) => member.userId).sort()).toEqual([alice.id, bob.id].sort());
+  expect(events).toEqual([{ type: 'FRIEND_REQUEST_REMOVE', requestId: request.id, reason: 'accepted', recipientIds: [bob.id, alice.id] }]);
 });
 
 test('rejects a stale accept with 404 and changes nothing', async () => {
@@ -269,6 +290,7 @@ test('rejects a stale accept with 404 and changes nothing', async () => {
   expect(friendships).toEqual([]);
   expect(channels).toEqual([]);
   expect(members).toEqual([]);
+  expect(events).toEqual([]);
 });
 
 test('gives one 200 and one 404 on a double accept', async () => {
@@ -282,6 +304,7 @@ test('gives one 200 and one 404 on a double accept', async () => {
   expect(first.status).toBe(200);
   expect(second.status).toBe(404);
   expect(friendships).toHaveLength(1);
+  expect(events).toHaveLength(1);
 });
 
 test('rejects a request and 404s the second respond', async () => {
@@ -295,6 +318,7 @@ test('rejects a request and 404s the second respond', async () => {
   expect(first.status).toBe(200);
   expect(second.status).toBe(404);
   expect(requests).toEqual([]);
+  expect(events).toEqual([{ type: 'FRIEND_REQUEST_REMOVE', requestId: request.id, reason: 'rejected', recipientIds: [bob.id, alice.id] }]);
 });
 
 test('hides a request from the wrong receiver', async () => {
@@ -305,6 +329,7 @@ test('hides a request from the wrong receiver', async () => {
 
   expect(response.status).toBe(404);
   expect(requests).toHaveLength(1);
+  expect(events).toEqual([]);
 });
 
 test('cancels only the sender request', async () => {
@@ -319,6 +344,7 @@ test('cancels only the sender request', async () => {
   expect(canceled.status).toBe(200);
   expect(again.status).toBe(404);
   expect(requests).toEqual([]);
+  expect(events).toEqual([{ type: 'FRIEND_REQUEST_REMOVE', requestId: request.id, reason: 'canceled', recipientIds: [bob.id, alice.id] }]);
 });
 
 test('cannot accept a canceled request', async () => {
@@ -330,6 +356,8 @@ test('cannot accept a canceled request', async () => {
 
   expect(response.status).toBe(404);
   expect(friendships).toEqual([]);
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ type: 'FRIEND_REQUEST_REMOVE', reason: 'canceled' });
 });
 
 test('returns 404 when removing a non-friend', async () => {

@@ -115,6 +115,71 @@ test('dispatches server updates to every recipient and nobody else', () => {
   }
 });
 
+test('dispatches friend request creates to the receiver only', () => {
+  const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-out': [] };
+  const sockets: ServerWebSocket[] = [];
+
+  for (const userId of Object.keys(sent)) {
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send: (payload: string) => {
+        sent[userId]!.push(payload);
+        return payload.length;
+      },
+    } as unknown as ServerWebSocket;
+
+    addConnection(socket, userId, `session-${userId}`, Date.now() + 60_000);
+    sockets.push(socket);
+  }
+
+  const stop = startDispatcher();
+
+  try {
+    const request = { id: 'request-1', createdAt: '2026-01-01T00:00:00.000Z', sender: { id: 'user-a', username: 'alice', displayName: null } };
+    eventBus.publish({ type: 'FRIEND_REQUEST_CREATE', request, recipientIds: ['user-b'] });
+
+    const frame = JSON.stringify({ type: 'FRIEND_REQUEST_CREATE', data: { request } });
+    expect(sent['user-b']).toEqual([frame]);
+    expect(sent['user-a']).toEqual([]);
+    expect(sent['user-out']).toEqual([]);
+  } finally {
+    stop();
+    for (const socket of sockets) removeConnection(socket);
+  }
+});
+
+test('dispatches friend request removals to both sides and nobody else', () => {
+  const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-out': [] };
+  const sockets: ServerWebSocket[] = [];
+
+  for (const userId of Object.keys(sent)) {
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send: (payload: string) => {
+        sent[userId]!.push(payload);
+        return payload.length;
+      },
+    } as unknown as ServerWebSocket;
+
+    addConnection(socket, userId, `session-${userId}`, Date.now() + 60_000);
+    sockets.push(socket);
+  }
+
+  const stop = startDispatcher();
+
+  try {
+    eventBus.publish({ type: 'FRIEND_REQUEST_REMOVE', requestId: 'request-1', reason: 'accepted', recipientIds: ['user-a', 'user-b'] });
+
+    const frame = JSON.stringify({ type: 'FRIEND_REQUEST_REMOVE', data: { requestId: 'request-1', reason: 'accepted' } });
+    expect(sent['user-a']).toEqual([frame]);
+    expect(sent['user-b']).toEqual([frame]);
+    expect(sent['user-out']).toEqual([]);
+  } finally {
+    stop();
+    for (const socket of sockets) removeConnection(socket);
+  }
+});
+
 test('dispatches user updates to every recipient and nobody else', () => {
   const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-out': [] };
   const sockets: ServerWebSocket[] = [];

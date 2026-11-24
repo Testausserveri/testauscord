@@ -1,4 +1,4 @@
-import type { MessageDTO, UserRef } from './protocol';
+import type { MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, UserRef } from './protocol';
 
 export type DomainEvent =
   | {
@@ -19,6 +19,17 @@ export type DomainEvent =
   | {
       type: 'USER_UPDATED';
       user: UserRef;
+      recipientIds: string[];
+    }
+  | {
+      type: 'FRIEND_REQUEST_CREATE';
+      request: FriendRequestDTO;
+      recipientIds: string[];
+    }
+  | {
+      type: 'FRIEND_REQUEST_REMOVE';
+      requestId: string;
+      reason: FriendRequestRemoveReason;
       recipientIds: string[];
     };
 

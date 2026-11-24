@@ -50,6 +50,14 @@ export type UserRef = {
   displayName: string | null;
 };
 
+export type FriendRequestDTO = {
+  id: string;
+  createdAt: string;
+  sender: UserRef;
+};
+
+export type FriendRequestRemoveReason = 'accepted' | 'rejected' | 'canceled';
+
 export type MessageFormat = 'TEXT' | 'E2EE';
 
 export type MessageDTO = {
@@ -79,6 +87,8 @@ export type ServerFrame =
   | { type: 'SERVER_MEMBER_REMOVED'; data: { serverId: string } }
   | { type: 'SERVER_UPDATED'; data: { server: { id: string; name: string } } }
   | { type: 'USER_UPDATED'; data: { user: UserRef } }
+  | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
+  | { type: 'FRIEND_REQUEST_REMOVE'; data: { requestId: string; reason: FriendRequestRemoveReason } }
   | { type: 'SESSION_REVOKED' }
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
@@ -107,6 +117,16 @@ export const serverUpdatedFrame = (server: { id: string; name: string }): Server
 export const userUpdatedFrame = (user: UserRef): ServerFrame => ({
   type: 'USER_UPDATED',
   data: { user },
+});
+
+export const friendRequestCreateFrame = (request: FriendRequestDTO): ServerFrame => ({
+  type: 'FRIEND_REQUEST_CREATE',
+  data: { request },
+});
+
+export const friendRequestRemoveFrame = (requestId: string, reason: FriendRequestRemoveReason): ServerFrame => ({
+  type: 'FRIEND_REQUEST_REMOVE',
+  data: { requestId, reason },
 });
 
 export const sessionRevokedFrame = (): ServerFrame => ({ type: 'SESSION_REVOKED' });

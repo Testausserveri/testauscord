@@ -5,7 +5,9 @@ import { enforceRateLimit } from '../middleware/rateLimit';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
 import { prisma } from '../db';
+import { eventBus } from '../realtime/bus';
 import { directChannelKey, friendPair } from '../services/directMessages';
+import { getUserRef } from '../services/profiles';
 
 const app = new Hono<{ Variables: Variables }>();
 const friendRequestLimiter = createRateLimiter(10, 60 * 60_000);
@@ -73,13 +75,23 @@ app.post('/sendRequest', async (c) => {
   }
 
   try {
-    await prisma.friendRequest.create({
+    const request = await prisma.friendRequest.create({
       data: {
         id: generateId(),
         senderId: c.get('user')!.id,
         receiverId: targetUser.id,
       },
     });
+
+    const sender = await getUserRef(c.get('user')!.id);
+
+    if (sender) {
+      eventBus.publish({
+        type: 'FRIEND_REQUEST_CREATE',
+        request: { id: request.id, createdAt: request.createdAt.toISOString(), sender },
+        recipientIds: [targetUser.id],
+      });
+    }
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
   }
@@ -125,6 +137,13 @@ app.post('/respondToRequest', async (c) => {
     if (count === 0) {
       return c.text('Friend request not found', 404);
     }
+
+    eventBus.publish({
+      type: 'FRIEND_REQUEST_REMOVE',
+      requestId,
+      reason: 'rejected',
+      recipientIds: [friendRequest.senderId, receiverId],
+    });
 
     return c.text('Friend request responded to', 200);
   }
@@ -186,6 +205,13 @@ app.post('/respondToRequest', async (c) => {
     return c.text('Friend request not found', 404);
   }
 
+  eventBus.publish({
+    type: 'FRIEND_REQUEST_REMOVE',
+    requestId,
+    reason: 'accepted',
+    recipientIds: [senderId, receiverId],
+  });
+
   return c.text('Friend request responded to', 200);
 });
 
@@ -204,13 +230,30 @@ app.post('/cancelRequest', async (c) => {
     return c.text('Invalid request id', 400);
   }
 
+  const receiverId = c.get('user')!.id;
+  const friendRequest = await prisma.friendRequest.findUnique({
+    where: { id: requestId },
+    select: { senderId: true, receiverId: true },
+  });
+
+  if (!friendRequest || friendRequest.senderId !== receiverId) {
+    return c.text('Friend request not found', 404);
+  }
+
   const { count } = await prisma.friendRequest.deleteMany({
-    where: { id: requestId, senderId: c.get('user')!.id },
+    where: { id: requestId, senderId: receiverId },
   });
 
   if (count === 0) {
     return c.text('Friend request not found', 404);
   }
+
+  eventBus.publish({
+    type: 'FRIEND_REQUEST_REMOVE',
+    requestId,
+    reason: 'canceled',
+    recipientIds: [friendRequest.senderId, friendRequest.receiverId],
+  });
 
   return c.text('Friend request canceled', 200);
 });

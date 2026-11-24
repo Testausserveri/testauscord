@@ -1,6 +1,6 @@
 import { eventBus, type DomainEvent } from './bus';
 import { publishToChannel, publishToUser } from './connections';
-import { messageCreateFrame, serverMemberRemovedFrame, serverUpdatedFrame, userUpdatedFrame } from './protocol';
+import { friendRequestCreateFrame, friendRequestRemoveFrame, messageCreateFrame, serverMemberRemovedFrame, serverUpdatedFrame, userUpdatedFrame } from './protocol';
 
 const dispatch = (event: DomainEvent): void => {
   if (event.type === 'MESSAGE_CREATE') {
@@ -13,6 +13,14 @@ const dispatch = (event: DomainEvent): void => {
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   } else if (event.type === 'USER_UPDATED') {
     const payload = JSON.stringify(userUpdatedFrame(event.user));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'FRIEND_REQUEST_CREATE') {
+    const payload = JSON.stringify(friendRequestCreateFrame(event.request));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'FRIEND_REQUEST_REMOVE') {
+    const payload = JSON.stringify(friendRequestRemoveFrame(event.requestId, event.reason));
 
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   }
