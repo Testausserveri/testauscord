@@ -1,4 +1,4 @@
-import type { MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, UserRef } from './protocol';
+import type { MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, ServerLayout, UserRef } from './protocol';
 
 export type DomainEvent =
   | {
@@ -14,6 +14,12 @@ export type DomainEvent =
   | {
       type: 'SERVER_UPDATED';
       server: { id: string; name: string };
+      recipientIds: string[];
+    }
+  | {
+      type: 'SERVER_LAYOUT_UPDATE';
+      serverId: string;
+      layout: ServerLayout;
       recipientIds: string[];
     }
   | {

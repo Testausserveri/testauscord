@@ -61,6 +61,29 @@ const serverSelect = {
   },
 } satisfies Prisma.ServerSelect;
 
+const publishServerLayout = async (serverId: string) => {
+  const [categories, channels, members] = await Promise.all([
+    prisma.channelCategory.findMany({
+      where: { serverId },
+      select: { id: true, name: true, position: true },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.channel.findMany({
+      where: { serverId },
+      select: { id: true, name: true, type: true, categoryId: true, position: true },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.serverMember.findMany({ where: { serverId }, select: { userId: true } }),
+  ]);
+
+  eventBus.publish({
+    type: 'SERVER_LAYOUT_UPDATE',
+    serverId,
+    layout: { categories, channels },
+    recipientIds: members.map((member) => member.userId),
+  });
+};
+
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 };
@@ -333,6 +356,8 @@ app.post('/:id/categories', async (c) => {
       select: categorySelect,
     });
 
+    await publishServerLayout(server.id);
+
     return c.json(category, 201);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -403,6 +428,8 @@ app.patch('/:id/categories/:categoryId', async (c) => {
       select: categorySelect,
     });
 
+    await publishServerLayout(server.id);
+
     return c.json(updated, 200);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -451,6 +478,8 @@ app.delete('/:id/categories/:categoryId', async (c) => {
     prisma.channelCategory.delete({ where: { id: category.id } }),
     ...plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: null, position: entry.position } })),
   ]);
+
+  await publishServerLayout(server.id);
 
   return c.body(null, 204);
 });
@@ -519,6 +548,8 @@ app.post('/:id/channels', async (c) => {
       select: { id: true, name: true, type: true, categoryId: true, position: true },
     });
 
+    await publishServerLayout(server.id);
+
     return c.json(channel, 201);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -585,6 +616,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
 
   if (plan.length > 0) {
     await prisma.$transaction(plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: entry.categoryId, position: entry.position } })));
+    await publishServerLayout(server.id);
   }
 
   const moved = plan.find((entry) => entry.id === channel.id);

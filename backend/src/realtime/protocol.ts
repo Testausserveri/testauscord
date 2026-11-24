@@ -58,6 +58,25 @@ export type FriendRequestDTO = {
 
 export type FriendRequestRemoveReason = 'accepted' | 'rejected' | 'canceled';
 
+export type ServerLayoutCategory = {
+  id: string;
+  name: string;
+  position: number;
+};
+
+export type ServerLayoutChannel = {
+  id: string;
+  name: string | null;
+  type: 'TEXT' | 'DM';
+  categoryId: string | null;
+  position: number;
+};
+
+export type ServerLayout = {
+  categories: ServerLayoutCategory[];
+  channels: ServerLayoutChannel[];
+};
+
 export type MessageFormat = 'TEXT' | 'E2EE';
 
 export type MessageDTO = {
@@ -86,6 +105,7 @@ export type ServerFrame =
   | { type: 'MESSAGE_CREATE'; data: { message: MessageDTO } }
   | { type: 'SERVER_MEMBER_REMOVED'; data: { serverId: string } }
   | { type: 'SERVER_UPDATED'; data: { server: { id: string; name: string } } }
+  | { type: 'SERVER_LAYOUT_UPDATE'; data: { serverId: string; layout: ServerLayout } }
   | { type: 'USER_UPDATED'; data: { user: UserRef } }
   | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
   | { type: 'FRIEND_REQUEST_REMOVE'; data: { requestId: string; reason: FriendRequestRemoveReason } }
@@ -112,6 +132,11 @@ export const serverMemberRemovedFrame = (serverId: string): ServerFrame => ({
 export const serverUpdatedFrame = (server: { id: string; name: string }): ServerFrame => ({
   type: 'SERVER_UPDATED',
   data: { server },
+});
+
+export const serverLayoutUpdateFrame = (serverId: string, layout: ServerLayout): ServerFrame => ({
+  type: 'SERVER_LAYOUT_UPDATE',
+  data: { serverId, layout },
 });
 
 export const userUpdatedFrame = (user: UserRef): ServerFrame => ({

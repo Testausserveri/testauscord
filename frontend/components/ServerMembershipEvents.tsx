@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
 import { getServerRoute } from '@/lib/serverRoutes';
-import type { Server, ServerDetail } from '@/types/types';
+import type { Server, ServerCategory, ServerChannel, ServerDetail } from '@/types/types';
 
 export function ServerMembershipEvents() {
   const { addListener } = useWebSocketContext();
@@ -37,6 +37,18 @@ export function ServerMembershipEvents() {
           }
 
           return;
+        }
+
+        if (frame.type === 'SERVER_LAYOUT_UPDATE') {
+          const data = frame.data as { serverId?: unknown; layout?: { categories?: unknown; channels?: unknown } } | undefined;
+          const serverId = data?.serverId;
+          const layout = data?.layout;
+          if (typeof serverId !== 'string' || !layout || !Array.isArray(layout.categories) || !Array.isArray(layout.channels)) return;
+
+          const next = { categories: layout.categories as ServerCategory[], channels: layout.channels as ServerChannel[] };
+
+          queryClient.setQueryData<Server[]>(['servers'], (servers) => servers?.map((server) => (server.id === serverId ? { ...server, ...next } : server)));
+          queryClient.setQueryData<ServerDetail>(['server', serverId], (detail) => (detail ? { ...detail, ...next } : detail));
         }
 
         if (frame.type === 'SERVER_UPDATED') {

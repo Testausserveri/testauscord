@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
 type ServerRow = { id: string; name: string; ownerId: string; members: string[] };
@@ -14,6 +15,8 @@ type CategoryWhere = {
 let servers: ServerRow[] = [];
 let categories: CategoryRow[] = [];
 let channels: ChannelRow[] = [];
+let events: DomainEvent[] = [];
+let stopEvents: (() => void) | null = null;
 let failCategoryCreate = false;
 
 const uniqueError = () => Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
@@ -45,7 +48,10 @@ const findCategory = mock(async ({ where }: { where: CategoryWhere }) => {
 });
 
 const findCategories = mock(async ({ where }: { where: { serverId: string } }) => {
-  return categories.filter((entry) => entry.serverId === where.serverId).map((entry) => ({ position: entry.position }));
+  return categories
+    .filter((entry) => entry.serverId === where.serverId)
+    .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+    .map((entry) => ({ id: entry.id, name: entry.name, position: entry.position }));
 });
 
 const countCategories = mock(async ({ where }: { where: { serverId: string } }) => {
@@ -82,7 +88,8 @@ const deleteCategory = mock(async ({ where }: { where: { id: string } }) => {
 const findChannels = mock(async ({ where }: { where: { serverId: string; categoryId?: string | null } }) => {
   return channels
     .filter((entry) => entry.serverId === where.serverId && (where.categoryId === undefined || entry.categoryId === where.categoryId))
-    .map((entry) => ({ id: entry.id, categoryId: entry.categoryId, position: entry.position }));
+    .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+    .map((entry) => ({ id: entry.id, name: entry.name, type: entry.type, categoryId: entry.categoryId, position: entry.position }));
 });
 
 const findChannel = mock(async ({ where }: { where: { id: string; serverId: string } }) => {
@@ -92,6 +99,10 @@ const findChannel = mock(async ({ where }: { where: { id: string; serverId: stri
 
 const countChannels = mock(async ({ where }: { where: { serverId: string } }) => {
   return channels.filter((entry) => entry.serverId === where.serverId).length;
+});
+
+const findMembers = mock(async ({ where }: { where: { serverId: string } }) => {
+  return (servers.find((entry) => entry.id === where.serverId)?.members ?? []).map((userId) => ({ userId }));
 });
 
 const createChannel = mock(async ({ data }: { data: { id: string; serverId: string; name: string; type: 'TEXT'; categoryId: string | null; position: number } }) => {
@@ -128,6 +139,7 @@ const prismaMock = {
     create: createChannel,
     update: updateChannel,
   },
+  serverMember: { findMany: findMembers },
 };
 
 const transaction = async (operations: Promise<unknown>[]) => Promise.all(operations);
@@ -205,7 +217,14 @@ beforeEach(() => {
   servers = [];
   categories = [];
   channels = [];
+  events = [];
   failCategoryCreate = false;
+  stopEvents = eventBus.subscribe((event) => events.push(event));
+});
+
+afterEach(() => {
+  stopEvents?.();
+  stopEvents = null;
 });
 
 afterAll(() => mock.restore());
@@ -215,9 +234,24 @@ test('creates a trimmed category at the next position', async () => {
   addCategory(serverId, 'Existing', 0);
 
   const response = await post(ownerApp, `/${serverId}/categories`, { name: '  Projects  ' });
+  const category = (await response.json()) as { id: string; name: string; position: number };
 
   expect(response.status).toBe(201);
-  expect(await response.json()).toEqual({ id: expect.any(String), name: 'Projects', position: 1 });
+  expect(category).toEqual({ id: expect.any(String), name: 'Projects', position: 1 });
+  expect(events).toEqual([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      layout: {
+        categories: [
+          { id: expect.any(String), name: 'Existing', position: 0 },
+          { id: category.id, name: 'Projects', position: 1 },
+        ],
+        channels: [],
+      },
+      recipientIds: ['owner-create', 'member-create'],
+    },
+  ]);
 });
 
 test('guards category creation by membership and ownership', async () => {
@@ -272,6 +306,14 @@ test('renames a category', async () => {
 
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ id: category.id, name: 'Projects', position: 0 });
+  expect(events).toEqual([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      layout: { categories: [{ id: category.id, name: 'Projects', position: 0 }], channels: [] },
+      recipientIds: ['owner-rename', 'member-rename'],
+    },
+  ]);
 });
 
 test('treats the same category name as a no-op', async () => {
@@ -339,6 +381,23 @@ test('deletes a category and appends its channels to uncategorized', async () =>
     ['c1', null, 3],
     ['c2', null, 4],
   ]);
+  expect(events).toEqual([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      layout: {
+        categories: [],
+        channels: [
+          { id: 'u0', name: 'channel-0', type: 'TEXT', categoryId: null, position: 0 },
+          { id: 'u1', name: 'channel-1', type: 'TEXT', categoryId: null, position: 1 },
+          { id: 'c0', name: 'channel-2', type: 'TEXT', categoryId: null, position: 2 },
+          { id: 'c1', name: 'channel-3', type: 'TEXT', categoryId: null, position: 3 },
+          { id: 'c2', name: 'channel-4', type: 'TEXT', categoryId: null, position: 4 },
+        ],
+      },
+      recipientIds: ['owner-delete', 'member-delete'],
+    },
+  ]);
 });
 
 test('deletes an empty category without moving uncategorized channels', async () => {
@@ -374,6 +433,26 @@ test('creates channels in the target group with the next position', async () => 
   expect(await uncategorized.json()).toMatchObject({ name: 'general', categoryId: null, position: 0 });
   expect(nested.status).toBe(201);
   expect(await nested.json()).toMatchObject({ name: 'nested', categoryId: category.id, position: 1 });
+  expect(events).toMatchObject([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      recipientIds: ['owner-channel-create', 'member-channel-create'],
+    },
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      recipientIds: ['owner-channel-create', 'member-channel-create'],
+      layout: {
+        categories: [{ id: category.id, name: 'Projects', position: 0 }],
+        channels: expect.arrayContaining([
+          expect.objectContaining({ name: 'existing', categoryId: category.id, position: 0 }),
+          expect.objectContaining({ name: 'general', categoryId: null, position: 0 }),
+          expect.objectContaining({ name: 'nested', categoryId: category.id, position: 1 }),
+        ]),
+      },
+    },
+  ]);
 });
 
 test('rejects an unknown category when creating a channel', async () => {
@@ -423,6 +502,22 @@ test('moves a channel between groups and renumbers both', async () => {
     ['b0', 'category-assign', 0],
     ['b1', 'category-assign', 1],
   ]);
+  expect(events).toEqual([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      layout: {
+        categories: [{ id: 'category-assign', name: 'Projects', position: 0 }],
+        channels: [
+          { id: 'a0', name: 'channel-0', type: 'TEXT', categoryId: null, position: 0 },
+          { id: 'b0', name: 'channel-2', type: 'TEXT', categoryId: 'category-assign', position: 0 },
+          { id: 'b1', name: 'channel-3', type: 'TEXT', categoryId: 'category-assign', position: 1 },
+          { id: 'a1', name: 'channel-1', type: 'TEXT', categoryId: 'category-assign', position: 2 },
+        ],
+      },
+      recipientIds: ['owner-assign', 'member-assign'],
+    },
+  ]);
 });
 
 test('treats a same-group channel assignment as a no-op', async () => {
@@ -433,6 +528,7 @@ test('treats a same-group channel assignment as a no-op', async () => {
 
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ id: 'b0', categoryId: 'category-noop', position: 0 });
+  expect(events).toEqual([]);
 });
 
 test('rejects a foreign category and a foreign channel on assign', async () => {
