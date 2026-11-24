@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun';
-import { afterAll, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, expect, mock, setSystemTime, test } from 'bun:test';
 import { sha256 } from '@oslojs/crypto/sha2';
 import { encodeHexLowerCase } from '@oslojs/encoding';
 import { addConnection } from '../realtime/connections';
@@ -28,8 +28,10 @@ const create = mock(async (args: { data: StoredSession }) => {
   rows.push(args.data);
   return args.data;
 });
-const findMany = mock(async ({ where, skip }: { where: { userId: string }; skip?: number }) => {
-  const found = rows.filter((stored) => stored.userId === where.userId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+const findMany = mock(async ({ where, skip }: { where: { userId: string; id?: { not: string } }; skip?: number }) => {
+  const found = rows
+    .filter((stored) => stored.userId === where.userId && (!where.id || stored.id !== where.id.not))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return found.slice(skip ?? 0).map((stored) => ({ id: stored.id }));
 });
 const deleteMany = mock(async ({ where }: { where: { id: { in: string[] } } }) => {
@@ -59,6 +61,7 @@ mock.module('../db', () => ({
 const { createSession, MAX_SESSIONS_PER_USER, validateSessionId, validateSessionToken } = await import('./session');
 
 afterAll(() => mock.restore());
+afterEach(() => setSystemTime());
 
 test('stores only the token hash', async () => {
   await createSession(token, user.id);
@@ -136,4 +139,22 @@ test('drops the oldest session when the per-user cap is reached', async () => {
   expect(rows.some((stored) => stored.id === 'session-1')).toBe(true);
   expect(sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
   expect(closed).toEqual([4001]);
+});
+
+test('keeps the new session when timestamps tie at the cap', async () => {
+  const now = new Date('2026-01-01T00:00:00Z');
+  setSystemTime(now);
+
+  rows = Array.from({ length: MAX_SESSIONS_PER_USER }, (_, index) => ({
+    id: `session-${index}`,
+    userId: user.id,
+    userAgent: null,
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + 60_000),
+  }));
+
+  const session = await createSession('tied-token', user.id);
+
+  expect(rows).toHaveLength(MAX_SESSIONS_PER_USER);
+  expect(rows.some((stored) => stored.id === session.id)).toBe(true);
 });

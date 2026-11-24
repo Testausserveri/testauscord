@@ -32,10 +32,10 @@ export const createSession = async (token: string, userId: string, userAgent?: s
     });
 
     const stale = await tx.session.findMany({
-      where: { userId },
+      where: { userId, id: { not: session.id } },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
-      skip: MAX_SESSIONS_PER_USER,
+      skip: MAX_SESSIONS_PER_USER - 1,
     });
 
     if (stale.length === 0) return [];
