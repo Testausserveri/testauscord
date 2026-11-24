@@ -5,6 +5,7 @@ import {
   addConnection,
   checkFrameBudget,
   closeSessionConnections,
+  closeUserConnections,
   markAlive,
   publishToChannel,
   publishToUser,
@@ -154,6 +155,27 @@ test('closes connections when their session is revoked', () => {
   expect(JSON.parse(a.sent[0]!).type).toBe('SESSION_REVOKED');
   expect(a.closed).toEqual([4001]);
   expect(b.sent).toEqual(['event']);
+
+  removeConnection(b.ws);
+});
+
+test('closes every connection for a user', () => {
+  const a1 = createSocket();
+  const a2 = createSocket();
+  const b = createSocket();
+
+  addConnection(a1.ws, 'user-a', 'session-a1', Date.now() + 60_000);
+  addConnection(a2.ws, 'user-a', 'session-a2', Date.now() + 60_000);
+  addConnection(b.ws, 'user-b', 'session-b', Date.now() + 60_000);
+
+  closeUserConnections('user-a');
+
+  expect(a1.closed).toEqual([4001]);
+  expect(a2.closed).toEqual([4001]);
+  expect(JSON.parse(a1.sent[0]!).type).toBe('SESSION_REVOKED');
+  expect(JSON.parse(a2.sent[0]!).type).toBe('SESSION_REVOKED');
+  expect(b.closed).toEqual([]);
+  expect(b.sent).toEqual([]);
 
   removeConnection(b.ws);
 });

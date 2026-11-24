@@ -3,7 +3,7 @@ import { prisma } from '../db';
 import { deleteSessionTokenCookie } from '../auth/cookie';
 import { MAX_SESSIONS_PER_USER } from '../auth/session';
 import { enforceRateLimit } from '../middleware/rateLimit';
-import { closeSessionConnections } from '../realtime/connections';
+import { closeSessionConnections, closeUserConnections } from '../realtime/connections';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
 
@@ -76,16 +76,9 @@ app.delete('/account/sessions', async (c) => {
   const limited = enforceRateLimit(c, sessionLimiter, userId);
   if (limited) return limited;
 
-  const sessions = await prisma.session.findMany({
-    where: { userId },
-    select: { id: true },
-  });
-
   await prisma.session.deleteMany({ where: { userId } });
 
-  for (const session of sessions) {
-    closeSessionConnections(session.id);
-  }
+  closeUserConnections(userId);
 
   c.header('Set-Cookie', deleteSessionTokenCookie());
 
@@ -129,25 +122,16 @@ app.post('/account/password', async (c) => {
 
   const password = await Bun.password.hash(newPassword);
 
-  const sessions = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
       data: { password },
     });
 
-    const rows = await tx.session.findMany({
-      where: { userId },
-      select: { id: true },
-    });
-
     await tx.session.deleteMany({ where: { userId } });
-
-    return rows;
   });
 
-  for (const session of sessions) {
-    closeSessionConnections(session.id);
-  }
+  closeUserConnections(userId);
 
   c.header('Set-Cookie', deleteSessionTokenCookie());
 

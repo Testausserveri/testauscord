@@ -1,6 +1,8 @@
+import type { ServerWebSocket } from 'bun';
 import { afterAll, expect, mock, test } from 'bun:test';
 import { sha256 } from '@oslojs/crypto/sha2';
 import { encodeHexLowerCase } from '@oslojs/encoding';
+import { addConnection } from '../realtime/connections';
 
 const token = 'raw-session-token';
 const sessionId = encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
@@ -111,9 +113,27 @@ test('drops the oldest session when the per-user cap is reached', async () => {
     expiresAt: new Date(Date.now() + 60_000),
   }));
 
+  const sent: string[] = [];
+  const closed: number[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN as number,
+    send: (payload: string) => {
+      sent.push(payload);
+      return payload.length;
+    },
+    close: (code: number) => {
+      closed.push(code);
+      socket.readyState = WebSocket.CLOSED;
+    },
+  };
+
+  expect(addConnection(socket as unknown as ServerWebSocket, user.id, 'session-0', Date.now() + 60_000)).toBe(true);
+
   await createSession('new-token', user.id);
 
   expect(rows).toHaveLength(MAX_SESSIONS_PER_USER);
   expect(rows.some((stored) => stored.id === 'session-0')).toBe(false);
   expect(rows.some((stored) => stored.id === 'session-1')).toBe(true);
+  expect(sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
+  expect(closed).toEqual([4001]);
 });

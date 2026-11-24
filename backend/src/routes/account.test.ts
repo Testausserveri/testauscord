@@ -98,6 +98,24 @@ const other = (): Row => ({
   expiresAt: new Date(Date.now() + 60_000),
 });
 
+const createSocket = () => {
+  const sent: string[] = [];
+  const closed: number[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN as number,
+    send: (payload: string) => {
+      sent.push(payload);
+      return payload.length;
+    },
+    close: (code: number) => {
+      closed.push(code);
+      socket.readyState = WebSocket.CLOSED;
+    },
+  };
+
+  return { ws: socket as unknown as ServerWebSocket, sent, closed };
+};
+
 const app = new Hono<{ Variables: Variables }>();
 
 app.onError((_error, c) => c.text('Internal Server Error', 500));
@@ -172,27 +190,15 @@ test('revokes a single other session without touching the current one', async ()
 });
 
 test('closes the websocket of a revoked session', async () => {
-  const sent: string[] = [];
-  const closed: number[] = [];
-  const socket = {
-    readyState: WebSocket.OPEN as number,
-    send: (payload: string) => {
-      sent.push(payload);
-      return payload.length;
-    },
-    close: (code: number) => {
-      closed.push(code);
-      socket.readyState = WebSocket.CLOSED;
-    },
-  };
+  const socket = createSocket();
 
-  addConnection(socket as unknown as ServerWebSocket, userId, 'session-other', Date.now() + 60_000);
+  expect(addConnection(socket.ws, userId, 'session-other', Date.now() + 60_000)).toBe(true);
 
   const response = await app.request('/account/sessions/session-other', { method: 'DELETE' });
 
   expect(response.status).toBe(204);
-  expect(sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
-  expect(closed).toEqual([4001]);
+  expect(socket.sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
+  expect(socket.closed).toEqual([4001]);
 });
 
 test('revoking the current session clears the cookie', async () => {
@@ -204,14 +210,24 @@ test('revoking the current session clears the cookie', async () => {
 });
 
 test('revoking all sessions clears every session and the cookie', async () => {
+  const socket = createSocket();
+
+  expect(addConnection(socket.ws, userId, currentId, Date.now() + 60_000)).toBe(true);
+
   const response = await app.request('/account/sessions', { method: 'DELETE' });
 
   expect(response.status).toBe(204);
   expect(sessions).toHaveLength(0);
   expect(response.headers.get('set-cookie')).toContain('__Host-session=;');
+  expect(socket.sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
+  expect(socket.closed).toEqual([4001]);
 });
 
 test('changing the password revokes every session including the current one', async () => {
+  const socket = createSocket();
+
+  expect(addConnection(socket.ws, userId, currentId, Date.now() + 60_000)).toBe(true);
+
   const response = await app.request('/account/password', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -221,6 +237,8 @@ test('changing the password revokes every session including the current one', as
   expect(response.status).toBe(200);
   expect(sessions).toHaveLength(0);
   expect(response.headers.get('set-cookie')).toContain('__Host-session=;');
+  expect(socket.sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
+  expect(socket.closed).toEqual([4001]);
 });
 
 test('keeps the old password and sessions when revocation fails', async () => {

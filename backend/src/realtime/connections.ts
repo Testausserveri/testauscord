@@ -195,20 +195,30 @@ export const unsubscribeUserFromChannel = (userId: string, channelId: string): v
   }
 };
 
+const closeConnection = (connection: Connection, frame: string): void => {
+  if (connection.ws.readyState === WebSocket.OPEN) {
+    try {
+      connection.ws.send(frame);
+    } catch {}
+  }
+
+  connection.ws.close(4001, 'Session revoked');
+  removeConnection(connection.ws);
+};
+
 export const closeSessionConnections = (sessionId: string): void => {
   const frame = JSON.stringify(sessionRevokedFrame());
 
   for (const connection of [...connections.values()]) {
-    if (connection.sessionId !== sessionId) continue;
+    if (connection.sessionId === sessionId) closeConnection(connection, frame);
+  }
+};
 
-    if (connection.ws.readyState === WebSocket.OPEN) {
-      try {
-        connection.ws.send(frame);
-      } catch {}
-    }
+export const closeUserConnections = (userId: string): void => {
+  const frame = JSON.stringify(sessionRevokedFrame());
 
-    connection.ws.close(4001, 'Session revoked');
-    removeConnection(connection.ws);
+  for (const connection of [...connections.values()]) {
+    if (connection.userId === userId) closeConnection(connection, frame);
   }
 };
 

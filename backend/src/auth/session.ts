@@ -1,5 +1,6 @@
 import type { Session } from '../generated/prisma/client';
 import { prisma } from '../db';
+import { closeSessionConnections } from '../realtime/connections';
 import type { AuthSession, AuthUser } from '../types/types';
 import { encodeBase32LowerCaseNoPadding, encodeHexLowerCase } from '@oslojs/encoding';
 import { sha256 } from '@oslojs/crypto/sha2';
@@ -25,7 +26,7 @@ export const createSession = async (token: string, userId: string, userAgent?: s
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
   };
 
-  await prisma.$transaction(async (tx) => {
+  const evicted = await prisma.$transaction(async (tx) => {
     await tx.session.create({
       data: session,
     });
@@ -37,12 +38,20 @@ export const createSession = async (token: string, userId: string, userAgent?: s
       skip: MAX_SESSIONS_PER_USER,
     });
 
-    if (stale.length > 0) {
-      await tx.session.deleteMany({
-        where: { id: { in: stale.map((row) => row.id) } },
-      });
-    }
+    if (stale.length === 0) return [];
+
+    const ids = stale.map((row) => row.id);
+
+    await tx.session.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    return ids;
   });
+
+  for (const id of evicted) {
+    closeSessionConnections(id);
+  }
 
   return session;
 };
