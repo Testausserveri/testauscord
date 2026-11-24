@@ -24,7 +24,7 @@ export type AccountSession = {
   current: boolean;
 };
 
-export type ServerAction = 'invite' | 'invites' | 'members' | 'leave' | 'settings';
+export type ServerAction = 'invite' | 'invites' | 'members' | 'leave' | 'settings' | 'bans';
 
 export type Friend = {
   id: string;

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { useProfilePopover } from './ProfilePopoverProvider';
+import { ServerBansDialog } from './ServerBansDialog';
 import { ServerSettingsDialog } from './ServerSettingsDialog';
 
 type Props = {
@@ -298,6 +299,7 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
         </DialogContent>
       </Dialog>
 
+      {action === 'bans' && <ServerBansDialog server={server} onClose={close} />}
       {action === 'settings' && <ServerSettingsDialog server={server} onClose={close} />}
     </>
   );

@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, FolderPlus, Hash, LogOut, MoreHorizontal, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
+import { Ban, ChevronDown, FolderPlus, Hash, LogOut, MoreHorizontal, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { createCategory, createChannel, deleteCategory, getServers, getUser, updateCategory, updateChannelCategory } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
@@ -258,6 +258,10 @@ export function ServerSidebar() {
                 <DropdownMenuItem onSelect={() => setAction('invites')}>
                   <Ticket />
                   Active invites
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setAction('bans')}>
+                  <Ban />
+                  Banned users
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setAction('settings')}>
                   <Settings />

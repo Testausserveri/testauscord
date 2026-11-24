@@ -5,7 +5,7 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
+import { Ban, LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
 import { createServer, getPendingRequests, getServers, getUser, joinServer, logout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -193,6 +193,15 @@ export function ServerRail() {
                   >
                     <Ticket />
                     Active invites
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() => {
+                      setActionServer(server);
+                      setAction('bans');
+                    }}
+                  >
+                    <Ban />
+                    Banned users
                   </ContextMenuItem>
                   <ContextMenuItem
                     onSelect={() => {
