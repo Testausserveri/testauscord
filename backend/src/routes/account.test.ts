@@ -116,17 +116,24 @@ const createSocket = () => {
   return { ws: socket as unknown as ServerWebSocket, sent, closed };
 };
 
-const app = new Hono<{ Variables: Variables }>();
+const createApp = (id: string, sessionId: string) => {
+  const app = new Hono<{ Variables: Variables }>();
 
-app.onError((_error, c) => c.text('Internal Server Error', 500));
+  app.onError((_error, c) => c.text('Internal Server Error', 500));
 
-app.use('*', async (c, next) => {
-  c.set('user', { id: userId, username: 'alice' });
-  c.set('session', { id: currentId, userId, expiresAt: current().expiresAt });
-  await next();
-});
+  app.use('*', async (c, next) => {
+    c.set('user', { id, username: 'alice' });
+    c.set('session', { id: sessionId, userId: id, expiresAt: new Date(Date.now() + 60_000) });
+    await next();
+  });
 
-app.route('/', account);
+  app.route('/', account);
+
+  return app;
+};
+
+const app = createApp(userId, currentId);
+const throttledApp = createApp('user-throttle', 'session-throttle');
 
 const unauthenticated = new Hono<{ Variables: Variables }>();
 unauthenticated.route('/', account);
@@ -256,13 +263,16 @@ test('keeps the old password and sessions when revocation fails', async () => {
   expect(await Bun.password.verify('NewPass2@', passwordHash)).toBe(false);
 });
 
-test('throttles session routes per user', async () => {
-  let response: Response | undefined;
+test('throttles session routes per user after 60 requests', async () => {
+  const statuses: number[] = [];
+  let last: Response | undefined;
 
   for (let index = 0; index < 61; index++) {
-    response = await app.request('/account/sessions');
+    last = await throttledApp.request('/account/sessions');
+    statuses.push(last.status);
   }
 
-  expect(response!.status).toBe(429);
-  expect(response!.headers.get('retry-after')).toBeTruthy();
+  expect(statuses.slice(0, 60)).toEqual(Array.from({ length: 60 }, () => 200));
+  expect(statuses[60]).toBe(429);
+  expect(last!.headers.get('retry-after')).toBeTruthy();
 });
