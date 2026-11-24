@@ -4,7 +4,7 @@ import { eventBus, type DomainEvent } from '../realtime/bus';
 import { friendPair } from '../services/directMessages';
 import type { Variables } from '../types/types';
 
-type UserRow = { id: string; username: string; displayName: string | null };
+type UserRow = { id: string; username: string; displayName: string | null; avatarVersion: number | null };
 type RequestRow = { id: string; senderId: string; receiverId: string; createdAt: Date };
 type FriendshipRow = { id: string; userAId: string; userBId: string; createdAt: Date };
 type ChannelRow = { id: string; dmKey: string };
@@ -12,9 +12,9 @@ type MemberRow = { channelId: string; userId: string };
 type RequestWhere = { id?: string; senderId?: string; receiverId?: string };
 type FriendshipWhere = { userAId_userBId: { userAId: string; userBId: string } };
 
-const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice' };
-const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null };
-const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol' };
+const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null };
+const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null };
+const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol', avatarVersion: null };
 
 let users: UserRow[] = [];
 let requests: RequestRow[] = [];
@@ -28,7 +28,7 @@ let stopEvents: (() => void) | null = null;
 
 const findUser = mock(async ({ where }: { where: { username?: string; id?: string } }) => {
   const user = where.id !== undefined ? users.find((entry) => entry.id === where.id) : users.find((entry) => entry.username === where.username);
-  return user ? { id: user.id, username: user.username, displayName: user.displayName } : null;
+  return user ? { id: user.id, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion } : null;
 });
 
 const findFriendship = mock(async ({ where }: { where: FriendshipWhere }) => {
@@ -154,7 +154,7 @@ const createApp = (user: UserRow) => {
 };
 
 const withUser = (id: string, username: string): UserRow => {
-  const user = { id, username, displayName: null };
+  const user = { id, username, displayName: null, avatarVersion: null };
   users.push(user);
   return user;
 };
@@ -212,7 +212,7 @@ test('returns the same opaque response for missing, pending and reverse requests
   expect(events).toEqual([
     {
       type: 'FRIEND_REQUEST_CREATE',
-      request: { id: requests[0]!.id, createdAt: requests[0]!.createdAt.toISOString(), sender: { id: sender.id, username: 'sender', displayName: null } },
+      request: { id: requests[0]!.id, createdAt: requests[0]!.createdAt.toISOString(), sender: { id: sender.id, username: 'sender', displayName: null, avatarVersion: null } },
       recipientIds: [bob.id],
     },
   ]);

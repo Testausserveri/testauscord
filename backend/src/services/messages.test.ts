@@ -24,14 +24,14 @@ test('maps a message record to the wire DTO', () => {
       content: 'hello',
       format: 'TEXT',
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      sender: { username: 'alice', displayName: null },
+      sender: { username: 'alice', displayName: null, avatarVersion: null },
     }),
   ).toEqual({
     id: '1',
     channelId: 'channel-1',
     content: 'hello',
     format: 'TEXT',
-    sender: { id: 'user-1', username: 'alice', displayName: null },
+    sender: { id: 'user-1', username: 'alice', displayName: null, avatarVersion: null },
     createdAt: '2026-01-01T00:00:00.000Z',
   });
 });

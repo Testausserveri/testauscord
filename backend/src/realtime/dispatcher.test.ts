@@ -21,7 +21,7 @@ test('dispatches message events to channel subscribers', () => {
     channelId,
     content: 'hello',
     format: 'TEXT',
-    sender: { id: 'user-1', username: 'alice', displayName: null },
+    sender: { id: 'user-1', username: 'alice', displayName: null, avatarVersion: null },
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 
@@ -203,7 +203,7 @@ test('dispatches friend request creates to the receiver only', () => {
   const stop = startDispatcher();
 
   try {
-    const request = { id: 'request-1', createdAt: '2026-01-01T00:00:00.000Z', sender: { id: 'user-a', username: 'alice', displayName: null } };
+    const request = { id: 'request-1', createdAt: '2026-01-01T00:00:00.000Z', sender: { id: 'user-a', username: 'alice', displayName: null, avatarVersion: null } };
     eventBus.publish({ type: 'FRIEND_REQUEST_CREATE', request, recipientIds: ['user-b'] });
 
     const frame = JSON.stringify({ type: 'FRIEND_REQUEST_CREATE', data: { request } });
@@ -268,7 +268,7 @@ test('dispatches user updates to every recipient and nobody else', () => {
   const stop = startDispatcher();
 
   try {
-    const user = { id: 'user-a', username: 'alice', displayName: 'Alice' };
+    const user = { id: 'user-a', username: 'alice', displayName: 'Alice', avatarVersion: null };
     eventBus.publish({ type: 'USER_UPDATED', user, recipientIds: ['user-a', 'user-b'] });
 
     const frame = JSON.stringify({ type: 'USER_UPDATED', data: { user } });

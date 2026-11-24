@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
-type Row = { id: string; username: string; displayName: string | null; bio: string | null };
+type Row = { id: string; username: string; displayName: string | null; bio: string | null; avatarVersion: number | null };
 
 let users: Record<string, Row> = {};
 let friendship: { id: string } | null = null;
@@ -17,7 +17,7 @@ const findFriendship = mock(async () => friendship);
 const findServerMember = mock(async () => sharedServer);
 const findFriendRequest = mock(async () => pendingRequest);
 const findFriendships = mock(async () => friendships);
-const updateUser = mock(async ({ where, data }: { where: { id: string }; data: Partial<Pick<Row, 'username' | 'displayName' | 'bio'>> }) => {
+const updateUser = mock(async ({ where, data }: { where: { id: string }; data: Partial<Pick<Row, 'username' | 'displayName' | 'bio' | 'avatarVersion'>> }) => {
   if (takenUsername !== null && data.username === takenUsername) {
     throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
   }
@@ -27,12 +27,18 @@ const updateUser = mock(async ({ where, data }: { where: { id: string }; data: P
   return { ...user };
 });
 
+const prismaMock = {
+  user: { findUnique: findUser, update: updateUser },
+  friendship: { findUnique: findFriendship, findMany: findFriendships },
+  serverMember: { findFirst: findServerMember },
+  friendRequest: { findFirst: findFriendRequest },
+  avatar: { upsert: mock(async () => undefined), deleteMany: mock(async () => ({ count: 1 })) },
+};
+
 mock.module('../db', () => ({
   prisma: {
-    user: { findUnique: findUser, update: updateUser },
-    friendship: { findUnique: findFriendship, findMany: findFriendships },
-    serverMember: { findFirst: findServerMember },
-    friendRequest: { findFirst: findFriendRequest },
+    ...prismaMock,
+    $transaction: async (callback: (tx: typeof prismaMock) => Promise<unknown>) => callback(prismaMock),
   },
 }));
 
@@ -85,6 +91,7 @@ const profile = (id: string): Row => ({
   username: id,
   displayName: id === 'viewer' ? 'Viewer' : null,
   bio: id === 'viewer' ? 'hello' : null,
+  avatarVersion: null,
 });
 
 beforeEach(() => {
@@ -111,7 +118,7 @@ test('returns the full profile for the current user', async () => {
   const response = await app.request('/users/@me');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'viewer', username: 'viewer', displayName: 'Viewer', bio: 'hello' });
+  expect(await response.json()).toEqual({ id: 'viewer', username: 'viewer', displayName: 'Viewer', bio: 'hello', avatarVersion: null });
 });
 
 test('returns a friend profile', async () => {
@@ -120,7 +127,7 @@ test('returns a friend profile', async () => {
   const response = await app.request('/users/friend');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null });
+  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null, avatarVersion: null });
 });
 
 test('returns a profile for a pending request', async () => {
@@ -166,7 +173,7 @@ test('updates and normalizes display name and bio', async () => {
   const response = await patchProfile(writerApp, { displayName: '  Alice  ', bio: 'hello\r\nworld  \r\n' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: 'Alice', bio: 'hello\nworld' });
+  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: 'Alice', bio: 'hello\nworld', avatarVersion: null });
 });
 
 test('clears display name and bio when empty', async () => {
@@ -175,7 +182,7 @@ test('clears display name and bio when empty', async () => {
   const response = await patchProfile(writerApp, { displayName: '   ', bio: '' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: null, bio: null });
+  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: null, bio: null, avatarVersion: null });
 });
 
 test('changes the username and keeps the same name a no-op', async () => {
@@ -263,7 +270,7 @@ test('publishes USER_UPDATED to the user and their friends', async () => {
     expect(events).toEqual([
       {
         type: 'USER_UPDATED',
-        user: { id: 'writer', username: 'writer', displayName: 'Alice' },
+        user: { id: 'writer', username: 'writer', displayName: 'Alice', avatarVersion: null },
         recipientIds: ['writer', 'friend', 'stranger'],
       },
     ]);

@@ -23,12 +23,12 @@ export const readImageInfo = (data: Uint8Array): ImageInfo | null => {
   return { width: size.width, height: size.height, contentType };
 };
 
-export const decodeImageDataUrl = (value: string): { data: Uint8Array; contentType: ImageType } | null => {
+export const decodeImageDataUrl = (value: string): { data: Uint8Array; contentType: ImageType; width: number; height: number } | null => {
   const match = /^data:image\/(webp|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
   if (!match) return null;
 
   const data = Buffer.from(match[2]!, 'base64');
   const info = readImageInfo(data);
 
-  return info ? { data, contentType: info.contentType } : null;
+  return info ? { data, ...info } : null;
 };

@@ -48,6 +48,7 @@ export type UserRef = {
   id: string;
   username: string;
   displayName: string | null;
+  avatarVersion: number | null;
 };
 
 export type FriendRequestDTO = {

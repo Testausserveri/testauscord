@@ -16,7 +16,7 @@ test('publishes to subscribers until they unsubscribe', () => {
       channelId: 'channel-1',
       content: 'hello',
       format: 'TEXT',
-      sender: { id: 'user-1', username: 'alice', displayName: null },
+      sender: { id: 'user-1', username: 'alice', displayName: null, avatarVersion: null },
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   });
@@ -31,7 +31,7 @@ test('publishes to subscribers until they unsubscribe', () => {
       channelId: 'channel-2',
       content: 'ignored',
       format: 'TEXT',
-      sender: { id: 'user-1', username: 'alice', displayName: null },
+      sender: { id: 'user-1', username: 'alice', displayName: null, avatarVersion: null },
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   });
@@ -74,7 +74,7 @@ test('publishes user updates with their recipients', () => {
     if (event.type === 'USER_UPDATED') seen.push(event.recipientIds);
   });
 
-  bus.publish({ type: 'USER_UPDATED', user: { id: 'user-1', username: 'alice', displayName: 'Alice' }, recipientIds: ['user-1', 'user-2'] });
+  bus.publish({ type: 'USER_UPDATED', user: { id: 'user-1', username: 'alice', displayName: 'Alice', avatarVersion: null }, recipientIds: ['user-1', 'user-2'] });
 
   stop();
 

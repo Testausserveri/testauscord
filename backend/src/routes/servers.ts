@@ -238,7 +238,7 @@ app.get('/:id', async (c) => {
       members: {
         select: {
           joinedAt: true,
-          user: { select: { id: true, username: true, displayName: true } },
+          user: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
         },
         orderBy: { joinedAt: 'asc' },
       },
@@ -256,6 +256,7 @@ app.get('/:id', async (c) => {
         id: member.user.id,
         username: member.user.username,
         displayName: member.user.displayName,
+        avatarVersion: member.user.avatarVersion,
         joinedAt: member.joinedAt,
       })),
     },
@@ -671,7 +672,7 @@ app.get('/:id/invites', async (c) => {
       code: true,
       createdAt: true,
       expiresAt: true,
-      createdBy: { select: { id: true, username: true, displayName: true } },
+      createdBy: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -921,8 +922,8 @@ app.get('/:id/bans', async (c) => {
     select: {
       reason: true,
       createdAt: true,
-      user: { select: { id: true, username: true, displayName: true } },
-      bannedBy: { select: { id: true, username: true, displayName: true } },
+      user: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
+      bannedBy: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 100,

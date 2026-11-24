@@ -7,7 +7,7 @@ export type ProfileDTO = UserRef & { bio: string | null };
 export const getUserRef = async (userId: string): Promise<UserRef | null> => {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, username: true, displayName: true },
+    select: { id: true, username: true, displayName: true, avatarVersion: true },
   });
 };
 

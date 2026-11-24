@@ -10,7 +10,7 @@ type MessageRecord = {
   content: string;
   format: 'TEXT' | 'E2EE';
   createdAt: Date;
-  sender: { username: string; displayName: string | null };
+  sender: { username: string; displayName: string | null; avatarVersion: number | null };
 };
 
 const isUniqueConstraintError = (error: unknown): boolean => {
@@ -26,6 +26,7 @@ export const toMessageDto = (message: MessageRecord): MessageDTO => ({
     id: message.senderId,
     username: message.sender.username,
     displayName: message.sender.displayName,
+    avatarVersion: message.sender.avatarVersion,
   },
   createdAt: message.createdAt.toISOString(),
 });
@@ -53,7 +54,7 @@ export const createChannelMessage = async (input: { channelId: string; senderId:
     },
     include: {
       sender: {
-        select: { username: true, displayName: true },
+        select: { username: true, displayName: true, avatarVersion: true },
       },
     },
   });
@@ -73,7 +74,7 @@ export const createChannelMessage = async (input: { channelId: string; senderId:
       },
       include: {
         sender: {
-          select: { username: true, displayName: true },
+          select: { username: true, displayName: true, avatarVersion: true },
         },
       },
     });
@@ -95,7 +96,7 @@ export const createChannelMessage = async (input: { channelId: string; senderId:
       },
       include: {
         sender: {
-          select: { username: true, displayName: true },
+          select: { username: true, displayName: true, avatarVersion: true },
         },
       },
     });

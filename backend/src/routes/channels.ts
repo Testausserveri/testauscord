@@ -119,7 +119,7 @@ app.get('/:id/messages', async (c) => {
       format: true,
       createdAt: true,
       sender: {
-        select: { username: true, displayName: true },
+        select: { username: true, displayName: true, avatarVersion: true },
       },
     },
   });

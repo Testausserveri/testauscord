@@ -6,7 +6,7 @@ import { startDispatcher } from './realtime/dispatcher';
 import { MAX_BUFFERED_BYTES, MAX_FRAME_BYTES } from './realtime/protocol';
 
 const port = Number(Bun.env.PORT) || 3000;
-const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const server = Bun.serve({
   port,
   maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
