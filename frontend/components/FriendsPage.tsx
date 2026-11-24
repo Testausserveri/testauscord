@@ -75,6 +75,12 @@ function AddFriendForm() {
     staleTime: 1000 * 20,
   });
 
+  const { data: pending } = useQuery<IncomingFriendRequest[]>({
+    queryKey: ['friend-requests-pending'],
+    queryFn: getPendingRequests,
+    staleTime: 1000 * 20,
+  });
+
   const label = username.trim();
   const valid = isValidUsername(label);
 
@@ -87,6 +93,11 @@ function AddFriendForm() {
 
     if (friends?.some((entry) => entry.friend.username === label)) {
       setMessage(`You are already friends with @${label}`);
+      return;
+    }
+
+    if (pending?.some((entry) => entry.sender.username === label)) {
+      setMessage(`@${label} already sent you a friend request. Check Pending to accept it.`);
       return;
     }
 
