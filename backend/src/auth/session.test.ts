@@ -12,21 +12,49 @@ const row = {
   user,
 };
 
+type StoredSession = {
+  id: string;
+  userId: string;
+  userAgent: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+};
+
+let rows: StoredSession[] = [];
+
+const create = mock(async (args: { data: StoredSession }) => {
+  rows.push(args.data);
+  return args.data;
+});
+const findMany = mock(async ({ where, skip }: { where: { userId: string }; skip?: number }) => {
+  const found = rows.filter((stored) => stored.userId === where.userId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return found.slice(skip ?? 0).map((stored) => ({ id: stored.id }));
+});
+const deleteMany = mock(async ({ where }: { where: { id: { in: string[] } } }) => {
+  const before = rows.length;
+  rows = rows.filter((stored) => !where.id.in.includes(stored.id));
+  return { count: before - rows.length };
+});
+const transaction = async <T>(run: (tx: { session: { create: typeof create; findMany: typeof findMany; deleteMany: typeof deleteMany } }) => Promise<T>) =>
+  run({ session: { create, findMany, deleteMany } });
+
 const findUnique = mock(async ({ where }: { where: { id: string }; select?: unknown }) => (where.id === sessionId ? row : null));
-const create = mock(async (args: { data: { id: string } }) => args.data);
 const update = mock(async () => row);
 
 mock.module('../db', () => ({
   prisma: {
+    $transaction: transaction,
     session: {
       create,
+      findMany,
+      deleteMany,
       findUnique,
       update,
     },
   },
 }));
 
-const { createSession, validateSessionId, validateSessionToken } = await import('./session');
+const { createSession, MAX_SESSIONS_PER_USER, validateSessionId, validateSessionToken } = await import('./session');
 
 afterAll(() => mock.restore());
 
@@ -72,4 +100,20 @@ test('selects only the fields the request context needs', async () => {
       },
     },
   });
+});
+
+test('drops the oldest session when the per-user cap is reached', async () => {
+  rows = Array.from({ length: MAX_SESSIONS_PER_USER }, (_, index) => ({
+    id: `session-${index}`,
+    userId: user.id,
+    userAgent: null,
+    createdAt: new Date(2026, 0, 1, 0, index),
+    expiresAt: new Date(Date.now() + 60_000),
+  }));
+
+  await createSession('new-token', user.id);
+
+  expect(rows).toHaveLength(MAX_SESSIONS_PER_USER);
+  expect(rows.some((stored) => stored.id === 'session-0')).toBe(false);
+  expect(rows.some((stored) => stored.id === 'session-1')).toBe(true);
 });

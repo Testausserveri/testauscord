@@ -14,6 +14,8 @@ export const generateSessionToken = (): string => {
 
 export const hashSessionToken = (token: string): string => encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
 
+export const MAX_SESSIONS_PER_USER = 20;
+
 export const createSession = async (token: string, userId: string, userAgent?: string): Promise<Session> => {
   const session: Session = {
     id: hashSessionToken(token),
@@ -23,8 +25,23 @@ export const createSession = async (token: string, userId: string, userAgent?: s
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
   };
 
-  await prisma.session.create({
-    data: session,
+  await prisma.$transaction(async (tx) => {
+    await tx.session.create({
+      data: session,
+    });
+
+    const stale = await tx.session.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+      skip: MAX_SESSIONS_PER_USER,
+    });
+
+    if (stale.length > 0) {
+      await tx.session.deleteMany({
+        where: { id: { in: stale.map((row) => row.id) } },
+      });
+    }
   });
 
   return session;

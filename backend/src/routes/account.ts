@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { prisma } from '../db';
 import { deleteSessionTokenCookie } from '../auth/cookie';
+import { MAX_SESSIONS_PER_USER } from '../auth/session';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { closeSessionConnections } from '../realtime/connections';
 import type { Variables } from '../types/types';
@@ -8,6 +9,7 @@ import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono<{ Variables: Variables }>();
 const passwordLimiter = createRateLimiter(5, 15 * 60_000);
+const sessionLimiter = createRateLimiter(60, 60_000);
 
 const PASSWORD_PATTERN = /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/;
 
@@ -19,9 +21,13 @@ app.get('/account/sessions', async (c) => {
   const userId = c.get('user')!.id;
   const currentSessionId = c.get('session')!.id;
 
+  const limited = enforceRateLimit(c, sessionLimiter, userId);
+  if (limited) return limited;
+
   const sessions = await prisma.session.findMany({
     where: { userId, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
+    take: MAX_SESSIONS_PER_USER,
     select: { id: true, userAgent: true, createdAt: true, expiresAt: true },
   });
 
@@ -39,6 +45,9 @@ app.delete('/account/sessions/:id', async (c) => {
   const userId = c.get('user')!.id;
   const currentSessionId = c.get('session')!.id;
   const sessionId = c.req.param('id');
+
+  const limited = enforceRateLimit(c, sessionLimiter, userId);
+  if (limited) return limited;
 
   const { count } = await prisma.session.deleteMany({
     where: { id: sessionId, userId },
@@ -63,6 +72,9 @@ app.delete('/account/sessions', async (c) => {
   }
 
   const userId = c.get('user')!.id;
+
+  const limited = enforceRateLimit(c, sessionLimiter, userId);
+  if (limited) return limited;
 
   const sessions = await prisma.session.findMany({
     where: { userId },
