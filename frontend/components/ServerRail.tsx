@@ -10,7 +10,7 @@ import { createServer, getPendingRequests, getServers, getUser, joinServer, logo
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
-import { getServerRoute } from '@/lib/serverRoutes';
+import { firstChannel, getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { logoutToLogin } from '@/lib/logout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
@@ -76,8 +76,8 @@ export function ServerRail() {
     setInviteCode('');
     setError(null);
 
-    const firstChannel = server.channels[0];
-    router.push(firstChannel ? `/channels/${server.id}/${firstChannel.id}` : '/channels/@me');
+    const channel = firstChannel(server);
+    router.push(channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me');
   };
 
   const handleCreate = async (event: SubmitEvent<HTMLFormElement>) => {
@@ -149,8 +149,8 @@ export function ServerRail() {
       <div className="h-px w-8 bg-sidebar-border" />
 
       {servers?.map((server: Server) => {
-        const firstChannel = server.channels[0];
-        const href = firstChannel ? `/channels/${server.id}/${firstChannel.id}` : '/channels/@me';
+        const channel = firstChannel(server);
+        const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
 
         return (
           <ContextMenu key={server.id}>

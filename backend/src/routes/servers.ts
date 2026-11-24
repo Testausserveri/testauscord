@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../db';
+import type { Prisma } from '../generated/prisma/client';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel } from '../realtime/connections';
@@ -51,10 +52,14 @@ const serverSelect = {
   ownerId: true,
   createdAt: true,
   channels: {
-    select: { id: true, name: true, type: true },
-    orderBy: { createdAt: 'asc' },
+    select: { id: true, name: true, type: true, categoryId: true, position: true },
+    orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   },
-} as const;
+  categories: {
+    select: { id: true, name: true, position: true },
+    orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+  },
+} satisfies Prisma.ServerSelect;
 
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';

@@ -58,6 +58,14 @@ export type ServerChannel = {
   id: string;
   name: string;
   type: 'DM' | 'TEXT';
+  categoryId: string | null;
+  position: number;
+};
+
+export type ServerCategory = {
+  id: string;
+  name: string;
+  position: number;
 };
 
 export type Server = {
@@ -66,6 +74,7 @@ export type Server = {
   ownerId: string;
   createdAt: string;
   channels: ServerChannel[];
+  categories: ServerCategory[];
 };
 
 export type ServerDetail = Server & {
