@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import { createRateLimiter, type RateLimiter } from '../utils/rateLimit';
-import { FRAME_WINDOW_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS, type ServerFrame } from './protocol';
+import { FRAME_WINDOW_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS, sessionRevokedFrame, type ServerFrame } from './protocol';
 
 type Connection = {
   ws: ServerWebSocket;
@@ -196,8 +196,16 @@ export const unsubscribeUserFromChannel = (userId: string, channelId: string): v
 };
 
 export const closeSessionConnections = (sessionId: string): void => {
+  const frame = JSON.stringify(sessionRevokedFrame());
+
   for (const connection of [...connections.values()]) {
     if (connection.sessionId !== sessionId) continue;
+
+    if (connection.ws.readyState === WebSocket.OPEN) {
+      try {
+        connection.ws.send(frame);
+      } catch {}
+    }
 
     connection.ws.close(4001, 'Session revoked');
     removeConnection(connection.ws);

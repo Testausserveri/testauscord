@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
 import { queryClient } from '@/lib/queryClient';
-import type { CurrentUser, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
+import type { AccountSession, CurrentUser, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -67,6 +67,18 @@ export const logout = async () => {
 
 export const changePassword = async (currentPassword: string, newPassword: string) => {
   await axios.post(`${API_URL}/account/password`, { currentPassword, newPassword }, { withCredentials: true });
+};
+
+export const getSessions = async (): Promise<AccountSession[]> => {
+  return await axios.get(`${API_URL}/account/sessions`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const revokeSession = async (id: string) => {
+  await axios.delete(`${API_URL}/account/sessions/${encodeURIComponent(id)}`, { withCredentials: true });
+};
+
+export const revokeAllSessions = async () => {
+  await axios.delete(`${API_URL}/account/sessions`, { withCredentials: true });
 };
 
 export const getUser = async (): Promise<CurrentUser> => {

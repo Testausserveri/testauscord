@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, ReactNode } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
+import { queryClient } from '@/lib/queryClient';
 
 const getSocketUrl = async () => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
@@ -44,6 +45,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const listenersRef = useRef(new Set<FrameListener>());
   const readyStateRef = useRef(ReadyState.UNINSTANTIATED);
 
+  const handleSessionRevoked = useCallback(() => {
+    queryClient.clear();
+    if (typeof window === 'undefined' || window.location.pathname === '/login') return;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign('/login');
+  }, []);
+
   const { sendMessage, readyState } = useWebSocket(getSocketUrl, {
     onOpen: () => {
       readyStateRef.current = ReadyState.OPEN;
@@ -60,6 +68,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         return;
       }
 
+      if (frame?.type === 'SESSION_REVOKED') {
+        handleSessionRevoked();
+        return;
+      }
+
       if (frame?.type === 'PING') {
         const nonce = (frame.data as { nonce?: unknown } | undefined)?.nonce;
         if (typeof nonce === 'string') {
@@ -69,6 +82,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       }
 
       for (const listener of listenersRef.current) listener(frame);
+    },
+    onClose: (event) => {
+      if (event.code === 4001) handleSessionRevoked();
     },
     onError: (error) => {
       console.error('WebSocket error:', error);

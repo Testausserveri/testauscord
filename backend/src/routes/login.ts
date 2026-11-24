@@ -36,7 +36,7 @@ app.post('/login', async (c) => {
   }
 
   const token = generateSessionToken();
-  const session = await createSession(token, existingUser.id);
+  const session = await createSession(token, existingUser.id, c.req.header('user-agent')?.slice(0, 255));
 
   c.header('Set-Cookie', createSessionTokenCookie(token, session.expiresAt));
 

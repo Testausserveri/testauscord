@@ -14,10 +14,12 @@ export const generateSessionToken = (): string => {
 
 export const hashSessionToken = (token: string): string => encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
 
-export const createSession = async (token: string, userId: string): Promise<Session> => {
+export const createSession = async (token: string, userId: string, userAgent?: string): Promise<Session> => {
   const session: Session = {
     id: hashSessionToken(token),
     userId,
+    userAgent: userAgent ?? null,
+    createdAt: new Date(),
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
   };
 

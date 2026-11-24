@@ -150,8 +150,9 @@ test('closes connections when their session is revoked', () => {
   closeSessionConnections('session-a');
   publishToChannel(channelId, 'event');
 
+  expect(a.sent).toHaveLength(1);
+  expect(JSON.parse(a.sent[0]!).type).toBe('SESSION_REVOKED');
   expect(a.closed).toEqual([4001]);
-  expect(a.sent).toEqual([]);
   expect(b.sent).toEqual(['event']);
 
   removeConnection(b.ws);

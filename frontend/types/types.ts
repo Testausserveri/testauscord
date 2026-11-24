@@ -3,6 +3,14 @@ export type CurrentUser = {
   username: string;
 };
 
+export type AccountSession = {
+  id: string;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+  current: boolean;
+};
+
 export type ServerAction = 'invite' | 'invites' | 'members' | 'leave';
 
 export type Friend = {

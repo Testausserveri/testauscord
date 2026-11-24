@@ -103,6 +103,8 @@ model Friendship {
 model Session {
   id String @id
   userId String
+  userAgent String?
+  createdAt DateTime @default(now())
   expiresAt DateTime
 
   user User @relation(references: [id], fields: [userId], onDelete: Cascade)

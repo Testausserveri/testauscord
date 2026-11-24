@@ -2,16 +2,45 @@
 
 import { useState } from 'react';
 import type { SubmitEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { changePassword } from '@/api/api';
+import { changePassword, getSessions, revokeAllSessions, revokeSession } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { useSettled } from '@/lib/useSettled';
+import type { AccountSession } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
+import { Separator } from './ui/separator';
 import { PasswordInput } from './PasswordInput';
 
 const PASSWORD_PATTERN = /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$ %^&*-]).{8,}$/;
+
+const BROWSERS: [RegExp, string][] = [
+  [/Edg\//, 'Edge'],
+  [/Firefox\//, 'Firefox'],
+  [/Chrome\//, 'Chrome'],
+  [/Safari\//, 'Safari'],
+];
+
+const SYSTEMS: [RegExp, string][] = [
+  [/Windows/, 'Windows'],
+  [/Android/, 'Android'],
+  [/iPhone|iPad/, 'iOS'],
+  [/Mac OS X/, 'macOS'],
+  [/Linux/, 'Linux'],
+];
+
+const describeUserAgent = (userAgent: string | null) => {
+  if (!userAgent) return 'Unknown device';
+
+  const browser = BROWSERS.find(([pattern]) => pattern.test(userAgent))?.[1] ?? 'Browser';
+  const system = SYSTEMS.find(([pattern]) => pattern.test(userAgent))?.[1];
+
+  return system ? `${browser} on ${system}` : browser;
+};
+
+const formatSessionDate = (value: string) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 type Props = {
   open: boolean;
@@ -19,6 +48,7 @@ type Props = {
 };
 
 export function AccountSettingsDialog({ open, onOpenChange }: Props) {
+  const queryClient = useQueryClient();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,6 +56,13 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
   const [confirmSettled, setConfirmSettled] = useSettled(confirmPassword);
   const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [revoking, setRevoking] = useState<string | 'all' | null>(null);
+
+  const { data: sessions, isPending: sessionsPending } = useQuery<AccountSession[]>({
+    queryKey: ['account-sessions'],
+    queryFn: getSessions,
+    enabled: open,
+  });
 
   const validPassword = newPassword.length <= 255 && PASSWORD_PATTERN.test(newPassword);
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
@@ -40,12 +77,19 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     setConfirmSettled(false);
     setCurrentPasswordInvalid(false);
     setBusy(false);
+    setRevoking(null);
   };
 
   const handleOpenChange = (next: boolean) => {
     if (busy) return;
     if (!next) reset();
     onOpenChange(next);
+  };
+
+  const goToLogin = () => {
+    queryClient.clear();
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign('/login');
   };
 
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
@@ -67,9 +111,8 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     setBusy(true);
     try {
       await changePassword(currentPassword, newPassword);
-      toast.success('Password changed. Other sessions were signed out.');
-      reset();
-      onOpenChange(false);
+      toast.success('Password changed. You have been signed out.');
+      goToLogin();
     } catch (caught) {
       const message = apiErrorMessage(caught);
       toast.error(message);
@@ -78,14 +121,53 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  const handleRevoke = async (session: AccountSession) => {
+    if (revoking) return;
+
+    setRevoking(session.id);
+    try {
+      await revokeSession(session.id);
+
+      if (session.current) {
+        goToLogin();
+        return;
+      }
+
+      toast.success('Session revoked');
+      await queryClient.invalidateQueries({ queryKey: ['account-sessions'] });
+    } catch (caught) {
+      toast.error(apiErrorMessage(caught));
+    } finally {
+      setRevoking(null);
+    }
+  };
+
+  const handleRevokeAll = async () => {
+    if (revoking || !sessions?.length) return;
+
+    setRevoking('all');
+    try {
+      await revokeAllSessions();
+      goToLogin();
+    } catch (caught) {
+      toast.error(apiErrorMessage(caught));
+      setRevoking(null);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Account settings</DialogTitle>
+          <DialogDescription>Manage your password and signed-in sessions.</DialogDescription>
+        </DialogHeader>
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Account settings</DialogTitle>
-            <DialogDescription>Change your password. All other sessions will be signed out.</DialogDescription>
-          </DialogHeader>
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-medium">Change password</h3>
+            <p className="text-xs text-muted-foreground">Changing your password signs you out of every session.</p>
+          </div>
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="current-password">Current password</Label>
@@ -150,6 +232,43 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
             </Button>
           </DialogFooter>
         </form>
+
+        <Separator />
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Sessions</h3>
+              <p className="text-xs text-muted-foreground">Devices currently signed in to your account.</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={handleRevokeAll} disabled={revoking !== null || !sessions?.length}>
+              Sign out all
+            </Button>
+          </div>
+
+          {sessionsPending ? (
+            <p className="text-sm text-muted-foreground">Loading sessions...</p>
+          ) : sessions?.length ? (
+            <ul className="flex flex-col divide-y rounded-md border">
+              {sessions.map((session) => (
+                <li key={session.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">
+                      {describeUserAgent(session.userAgent)}
+                      {session.current && <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">This device</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Signed in {formatSessionDate(session.createdAt)}</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => handleRevoke(session)} disabled={revoking !== null}>
+                    {revoking === session.id ? 'Revoking...' : session.current ? 'Sign out' : 'Revoke'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No active sessions.</p>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

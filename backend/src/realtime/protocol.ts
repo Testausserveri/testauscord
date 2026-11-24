@@ -76,6 +76,7 @@ export type ServerFrame =
     }
   | { type: 'MESSAGE_CREATE'; data: { message: MessageDTO } }
   | { type: 'SERVER_MEMBER_REMOVED'; data: { serverId: string } }
+  | { type: 'SESSION_REVOKED' }
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
 export type ServerFrameType = ServerFrame['type'];
@@ -89,6 +90,8 @@ export const serverMemberRemovedFrame = (serverId: string): ServerFrame => ({
   type: 'SERVER_MEMBER_REMOVED',
   data: { serverId },
 });
+
+export const sessionRevokedFrame = (): ServerFrame => ({ type: 'SESSION_REVOKED' });
 
 export const errorFrame = (code: ErrorCode, message: string, nonce?: string): ServerFrame => ({
   type: 'ERROR',
