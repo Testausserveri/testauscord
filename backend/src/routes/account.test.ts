@@ -1,5 +1,7 @@
+import type { ServerWebSocket } from 'bun';
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { addConnection } from '../realtime/connections';
 import type { Variables } from '../types/types';
 
 type Row = {
@@ -108,6 +110,9 @@ app.use('*', async (c, next) => {
 
 app.route('/', account);
 
+const unauthenticated = new Hono<{ Variables: Variables }>();
+unauthenticated.route('/', account);
+
 beforeEach(() => {
   sessions = [current(), other()];
   passwordHash = initialHash;
@@ -125,6 +130,30 @@ test('lists sessions newest first and marks the current one', async () => {
   expect(body.map((session) => session.current)).toEqual([true, false]);
 });
 
+test('requires authentication to list sessions', async () => {
+  const response = await unauthenticated.request('/account/sessions');
+
+  expect(response.status).toBe(401);
+});
+
+test('does not list another user sessions', async () => {
+  sessions.push({ ...other(), id: 'session-foreign', userId: 'user-2' });
+
+  const response = await app.request('/account/sessions');
+  const body = (await response.json()) as Row[];
+
+  expect(body.map((session) => session.id)).toEqual([currentId, 'session-other']);
+});
+
+test('does not list expired sessions', async () => {
+  sessions.push({ ...other(), id: 'session-expired', expiresAt: new Date(Date.now() - 1) });
+
+  const response = await app.request('/account/sessions');
+  const body = (await response.json()) as Row[];
+
+  expect(body.map((session) => session.id)).toEqual([currentId, 'session-other']);
+});
+
 test('does not revoke another user session', async () => {
   sessions.push({ ...other(), id: 'session-foreign', userId: 'user-2' });
 
@@ -140,6 +169,30 @@ test('revokes a single other session without touching the current one', async ()
   expect(response.status).toBe(204);
   expect(sessions.map((session) => session.id)).toEqual([currentId]);
   expect(response.headers.get('set-cookie')).toBeNull();
+});
+
+test('closes the websocket of a revoked session', async () => {
+  const sent: string[] = [];
+  const closed: number[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN as number,
+    send: (payload: string) => {
+      sent.push(payload);
+      return payload.length;
+    },
+    close: (code: number) => {
+      closed.push(code);
+      socket.readyState = WebSocket.CLOSED;
+    },
+  };
+
+  addConnection(socket as unknown as ServerWebSocket, userId, 'session-other', Date.now() + 60_000);
+
+  const response = await app.request('/account/sessions/session-other', { method: 'DELETE' });
+
+  expect(response.status).toBe(204);
+  expect(sent.map((payload) => (JSON.parse(payload) as { type: string }).type)).toEqual(['SESSION_REVOKED']);
+  expect(closed).toEqual([4001]);
 });
 
 test('revoking the current session clears the cookie', async () => {
@@ -183,4 +236,15 @@ test('keeps the old password and sessions when revocation fails', async () => {
   expect(sessions).toHaveLength(2);
   expect(await Bun.password.verify('OldPass1!', passwordHash)).toBe(true);
   expect(await Bun.password.verify('NewPass2@', passwordHash)).toBe(false);
+});
+
+test('throttles session routes per user', async () => {
+  let response: Response | undefined;
+
+  for (let index = 0; index < 61; index++) {
+    response = await app.request('/account/sessions');
+  }
+
+  expect(response!.status).toBe(429);
+  expect(response!.headers.get('retry-after')).toBeTruthy();
 });
