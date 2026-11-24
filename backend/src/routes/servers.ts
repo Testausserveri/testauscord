@@ -6,9 +6,11 @@ import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
+import { planCategoryDelete, planChannelAssign, nextPosition } from '../services/serverLayout';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
+import { containsBidiControls, containsControlChars } from '../utils/validation';
 
 const app = new Hono<{ Variables: Variables }>();
 const inviteLimiter = createRateLimiter(10, 60_000);
@@ -16,20 +18,32 @@ const serverCreateLimiter = createRateLimiter(10, 60 * 60_000);
 const serverJoinLimiter = createRateLimiter(30, 60_000);
 const serverRenameLimiter = createRateLimiter(10, 60 * 60_000);
 const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
+const channelAssignLimiter = createRateLimiter(60, 60_000);
+const categoryMutationLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
 
 const MAX_SERVER_MEMBERSHIPS = 200;
 const MAX_CHANNELS_PER_SERVER = 50;
+const MAX_CATEGORIES_PER_SERVER = 20;
 const MAX_INVITES_PER_SERVER = 50;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 
 const serverNameSchema = z.string().trim().min(1).max(100);
+const categoryNameSchema = z.string().trim().min(1).max(50);
 const channelNameSchema = z
   .string()
   .trim()
   .min(1)
   .max(32)
   .regex(/^[a-z0-9-]+$/, 'Invalid channel name');
+
+const categorySelect = { id: true, name: true, position: true } as const;
+
+const findManageableServer = (serverId: string, userId: string) =>
+  prisma.server.findFirst({
+    where: { id: serverId, members: { some: { userId } } },
+    select: { id: true, ownerId: true },
+  });
 
 const serverSelect = {
   id: true,
@@ -252,48 +266,252 @@ app.patch('/:id', async (c) => {
   return c.json({ id: server.id, name }, 200);
 });
 
-app.post('/:id/channels', async (c) => {
+app.post('/:id/categories', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const limited = enforceRateLimit(c, channelCreateLimiter, c.get('user')!.id);
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, categoryMutationLimiter, userId);
   if (limited) return limited;
 
-  const server = await prisma.server.findUnique({
-    where: { id: c.req.param('id') },
-    select: { ownerId: true },
-  });
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ name: categoryNameSchema }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid category name', 400);
+  }
+
+  const name = result.data.name;
+
+  if (containsControlChars(name) || containsBidiControls(name)) {
+    return c.text('Invalid category name', 400);
+  }
+
+  const server = await findManageableServer(c.req.param('id'), userId);
 
   if (!server) {
     return c.text('Server not found', 404);
   }
 
-  if (server.ownerId !== c.get('user')!.id) {
-    return c.text('Only the server owner can create channels', 403);
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can manage categories', 403);
   }
 
+  const duplicate = await prisma.channelCategory.findFirst({
+    where: { serverId: server.id, name: { equals: name, mode: 'insensitive' } },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    return c.text('Category name already in use', 409);
+  }
+
+  const count = await prisma.channelCategory.count({ where: { serverId: server.id } });
+  if (count >= MAX_CATEGORIES_PER_SERVER) {
+    return c.text('Category limit reached', 409);
+  }
+
+  const siblings = await prisma.channelCategory.findMany({
+    where: { serverId: server.id },
+    select: { position: true },
+  });
+
+  try {
+    const category = await prisma.channelCategory.create({
+      data: {
+        id: generateId(),
+        serverId: server.id,
+        name,
+        position: nextPosition(siblings.map((sibling) => sibling.position)),
+      },
+      select: categorySelect,
+    });
+
+    return c.json(category, 201);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Category name already in use', 409);
+    }
+    throw error;
+  }
+});
+
+app.patch('/:id/categories/:categoryId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, categoryMutationLimiter, userId);
+  if (limited) return limited;
+
   const body = await c.req.json().catch(() => null);
-  const result = z.object({ name: channelNameSchema }).safeParse(body);
+  const result = z.object({ name: categoryNameSchema }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid category name', 400);
+  }
+
+  const name = result.data.name;
+
+  if (containsControlChars(name) || containsBidiControls(name)) {
+    return c.text('Invalid category name', 400);
+  }
+
+  const server = await findManageableServer(c.req.param('id'), userId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can manage categories', 403);
+  }
+
+  const category = await prisma.channelCategory.findFirst({
+    where: { id: c.req.param('categoryId'), serverId: server.id },
+    select: categorySelect,
+  });
+
+  if (!category) {
+    return c.text('Category not found', 404);
+  }
+
+  if (category.name === name) {
+    return c.json(category, 200);
+  }
+
+  const duplicate = await prisma.channelCategory.findFirst({
+    where: { serverId: server.id, id: { not: category.id }, name: { equals: name, mode: 'insensitive' } },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    return c.text('Category name already in use', 409);
+  }
+
+  try {
+    const updated = await prisma.channelCategory.update({
+      where: { id: category.id },
+      data: { name },
+      select: categorySelect,
+    });
+
+    return c.json(updated, 200);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Category name already in use', 409);
+    }
+    throw error;
+  }
+});
+
+app.delete('/:id/categories/:categoryId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, categoryMutationLimiter, userId);
+  if (limited) return limited;
+
+  const server = await findManageableServer(c.req.param('id'), userId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can manage categories', 403);
+  }
+
+  const category = await prisma.channelCategory.findFirst({
+    where: { id: c.req.param('categoryId'), serverId: server.id },
+    select: { id: true },
+  });
+
+  if (!category) {
+    return c.text('Category not found', 404);
+  }
+
+  const channels = await prisma.channel.findMany({
+    where: { serverId: server.id },
+    select: { id: true, categoryId: true, position: true },
+  });
+
+  const plan = planCategoryDelete(channels, category.id);
+
+  await prisma.$transaction([
+    prisma.channelCategory.delete({ where: { id: category.id } }),
+    ...plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: null, position: entry.position } })),
+  ]);
+
+  return c.body(null, 204);
+});
+
+app.post('/:id/channels', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, channelCreateLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ name: channelNameSchema, categoryId: z.string().min(1).max(64).optional() }).safeParse(body);
 
   if (!result.success) {
     return c.text('Invalid channel name', 400);
   }
 
-  const channels = await prisma.channel.count({ where: { serverId: c.req.param('id') } });
+  const server = await findManageableServer(c.req.param('id'), userId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can create channels', 403);
+  }
+
+  let categoryId: string | null = null;
+
+  if (result.data.categoryId !== undefined) {
+    const category = await prisma.channelCategory.findFirst({
+      where: { id: result.data.categoryId, serverId: server.id },
+      select: { id: true },
+    });
+
+    if (!category) {
+      return c.text('Invalid category', 400);
+    }
+
+    categoryId = category.id;
+  }
+
+  const channels = await prisma.channel.count({ where: { serverId: server.id } });
   if (channels >= MAX_CHANNELS_PER_SERVER) {
     return c.text('Channel limit reached', 409);
   }
+
+  const siblings = await prisma.channel.findMany({
+    where: { serverId: server.id, categoryId },
+    select: { position: true },
+  });
 
   try {
     const channel = await prisma.channel.create({
       data: {
         id: generateId(),
-        serverId: c.req.param('id'),
+        serverId: server.id,
         name: result.data.name,
         type: 'TEXT',
+        categoryId,
+        position: nextPosition(siblings.map((sibling) => sibling.position)),
       },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true, type: true, categoryId: true, position: true },
     });
 
     return c.json(channel, 201);
@@ -303,6 +521,70 @@ app.post('/:id/channels', async (c) => {
     }
     throw error;
   }
+});
+
+app.patch('/:id/channels/:channelId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, channelAssignLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ categoryId: z.string().min(1).max(64).nullable() }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid category', 400);
+  }
+
+  const server = await findManageableServer(c.req.param('id'), userId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can move channels', 403);
+  }
+
+  const channel = await prisma.channel.findFirst({
+    where: { id: c.req.param('channelId'), serverId: server.id },
+    select: { id: true, name: true, type: true, categoryId: true, position: true },
+  });
+
+  if (!channel) {
+    return c.text('Channel not found', 404);
+  }
+
+  const categoryId = result.data.categoryId;
+
+  if (categoryId !== null) {
+    const category = await prisma.channelCategory.findFirst({
+      where: { id: categoryId, serverId: server.id },
+      select: { id: true },
+    });
+
+    if (!category) {
+      return c.text('Invalid category', 400);
+    }
+  }
+
+  const channels = await prisma.channel.findMany({
+    where: { serverId: server.id },
+    select: { id: true, categoryId: true, position: true },
+  });
+
+  const plan = planChannelAssign(channels, channel.id, categoryId);
+
+  if (plan.length > 0) {
+    await prisma.$transaction(plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: entry.categoryId, position: entry.position } })));
+  }
+
+  const moved = plan.find((entry) => entry.id === channel.id);
+
+  return c.json({ ...channel, categoryId: moved?.categoryId ?? categoryId, position: moved?.position ?? channel.position }, 200);
 });
 
 app.get('/:id/invites', async (c) => {
