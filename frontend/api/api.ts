@@ -102,6 +102,18 @@ export const getSentRequests = async (): Promise<OutgoingFriendRequest[]> => {
   return await axios.get(`${API_URL}/friends/sentRequests`, { withCredentials: true }).then((res) => res.data);
 };
 
+export const sendFriendRequest = async (target: string): Promise<string> => {
+  return await axios.post(`${API_URL}/friends/sendRequest`, { target }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const respondToFriendRequest = async (requestId: string, accepted: boolean) => {
+  await axios.post(`${API_URL}/friends/respondToRequest`, { requestId, accepted }, { withCredentials: true });
+};
+
+export const cancelFriendRequest = async (requestId: string) => {
+  await axios.post(`${API_URL}/friends/cancelRequest`, { requestId }, { withCredentials: true });
+};
+
 export const getServers = async (): Promise<Server[]> => {
   return await axios.get(`${API_URL}/servers`, { withCredentials: true }).then((res) => res.data);
 };

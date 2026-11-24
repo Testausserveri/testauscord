@@ -1,7 +1,7 @@
 'use client';
 
 import { getFriends } from '@/api/api';
-import { FriendsList } from '@/components/FriendsList';
+import { FriendsPage } from '@/components/FriendsPage';
 import Loader from '@/components/Loader';
 import { useQuery } from '@tanstack/react-query';
 
@@ -14,5 +14,5 @@ export default function Me() {
 
   if (isPending) return <Loader />;
 
-  return <FriendsList />;
+  return <FriendsPage />;
 }

@@ -1,7 +1,5 @@
 'use client';
 
-import type React from 'react';
-import { Users } from 'lucide-react';
 import { FriendCard } from './FriendCard';
 import { useQuery } from '@tanstack/react-query';
 import { getFriends } from '@/api/api';
@@ -17,22 +15,13 @@ export function FriendsList() {
   const friends = data ? [...data].sort((a, b) => (a.friend.displayName ?? a.friend.username).localeCompare(b.friend.displayName ?? b.friend.username)) : undefined;
 
   return (
-    <div className="h-full flex flex-col">
-      <header className="px-4 py-3 border-b flex items-center">
-        <div className="flex items-center gap-2">
-          <Users className="!h-6 !w-6" />
-          <h1 className="font-semibold">Friends</h1>
-        </div>
-      </header>
+    <div>
+      <h3 className="text-xs font-semibold mb-2">ALL FRIENDS — {data?.length ?? 0}</h3>
 
-      <div className="flex-1 overflow-auto p-4">
-        <h3 className="text-xs font-semibold mb-2">ALL FRIENDS — {data?.length}</h3>
-
-        <div className="gap-1 flex flex-col">
-          {friends?.map((friend: Friend) => (
-            <FriendCard key={friend.id} friend={friend} />
-          ))}
-        </div>
+      <div className="gap-1 flex flex-col">
+        {friends?.map((friend: Friend) => (
+          <FriendCard key={friend.id} friend={friend} />
+        ))}
       </div>
     </div>
   );

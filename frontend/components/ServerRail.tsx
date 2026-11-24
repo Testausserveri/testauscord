@@ -6,10 +6,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
-import { createServer, getServers, getUser, joinServer, logout } from '@/api/api';
+import { createServer, getPendingRequests, getServers, getUser, joinServer, logout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
-import { CurrentUser, Server, ServerAction } from '@/types/types';
+import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { logoutToLogin } from '@/lib/logout';
@@ -59,6 +59,14 @@ export function ServerRail() {
     queryFn: getUser,
     staleTime: Infinity,
   });
+
+  const { data: pending } = useQuery<IncomingFriendRequest[]>({
+    queryKey: ['friend-requests-pending'],
+    queryFn: getPendingRequests,
+    staleTime: 1000 * 20,
+  });
+
+  const pendingCount = pending?.length ?? 0;
 
   const enterServer = (server: Server) => {
     queryClient.invalidateQueries({ queryKey: ['servers'] });
@@ -125,9 +133,17 @@ export function ServerRail() {
         href="/channels/@me"
         title="Direct Messages"
         aria-label="Direct Messages"
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
+        className={`relative flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
       >
         <MessageCircle className="h-6 w-6" />
+        {pendingCount > 0 && (
+          <span
+            aria-label={`${pendingCount} pending friend requests`}
+            className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+          >
+            {pendingCount > 9 ? '9+' : pendingCount}
+          </span>
+        )}
       </Link>
 
       <div className="h-px w-8 bg-sidebar-border" />

@@ -52,14 +52,14 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
   });
 
   const { data: incoming } = useQuery<IncomingFriendRequest[]>({
-    queryKey: ['friend-requests', 'incoming'],
+    queryKey: ['friend-requests-pending'],
     queryFn: getPendingRequests,
     enabled: open,
     staleTime: 1000 * 20,
   });
 
   const { data: outgoing } = useQuery<OutgoingFriendRequest[]>({
-    queryKey: ['friend-requests', 'outgoing'],
+    queryKey: ['friend-requests-sent'],
     queryFn: getSentRequests,
     enabled: open,
     staleTime: 1000 * 20,
