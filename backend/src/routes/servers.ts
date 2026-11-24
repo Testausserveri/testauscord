@@ -23,6 +23,7 @@ const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
 const channelAssignLimiter = createRateLimiter(60, 60_000);
 const categoryMutationLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
+const moderationLimiter = createRateLimiter(30, 60_000);
 
 const MAX_SERVER_MEMBERSHIPS = 200;
 const MAX_CHANNELS_PER_SERVER = 50;
@@ -46,6 +47,14 @@ const findManageableServer = (serverId: string, userId: string) =>
     where: { id: serverId, members: { some: { userId } } },
     select: { id: true, ownerId: true },
   });
+
+const findServerChannels = (serverId: string) => prisma.channel.findMany({ where: { serverId }, select: { id: true } });
+
+const evictServerMember = (serverId: string, userId: string, channels: { id: string }[]) => {
+  for (const channel of channels) unsubscribeUserFromChannel(userId, channel.id);
+
+  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId, userId });
+};
 
 const serverSelect = {
   id: true,
@@ -748,16 +757,17 @@ app.delete('/:id/members/:userId', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const server = await prisma.server.findUnique({
-    where: { id: c.req.param('id') },
-    select: { id: true, ownerId: true, channels: { select: { id: true } } },
-  });
+  const actorId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, moderationLimiter, actorId);
+  if (limited) return limited;
+
+  const server = await findManageableServer(c.req.param('id'), actorId);
 
   if (!server) {
     return c.text('Server not found', 404);
   }
 
-  if (server.ownerId !== c.get('user')!.id) {
+  if (!isServerOwner(server, actorId)) {
     return c.text('Only the server owner can remove members', 403);
   }
 
@@ -776,16 +786,140 @@ app.delete('/:id/members/:userId', async (c) => {
     return c.text('Member not found', 404);
   }
 
-  await prisma.serverMember.delete({ where: { id: membership.id } });
-  await prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } });
+  const channels = await findServerChannels(server.id);
 
-  for (const channel of server.channels) {
-    unsubscribeUserFromChannel(targetId, channel.id);
-  }
+  await prisma.$transaction([prisma.serverMember.delete({ where: { id: membership.id } }), prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } })]);
 
-  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: server.id, userId: targetId });
+  evictServerMember(server.id, targetId, channels);
 
   return c.body(null, 204);
+});
+
+app.put('/:id/bans/:userId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const actorId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, moderationLimiter, actorId);
+  if (limited) return limited;
+
+  const server = await findManageableServer(c.req.param('id'), actorId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, actorId)) {
+    return c.text('Only the server owner can ban members', 403);
+  }
+
+  const targetId = c.req.param('userId');
+
+  if (targetId === actorId) {
+    return c.text('You cannot ban yourself', 400);
+  }
+
+  if (targetId === server.ownerId) {
+    return c.text('The server owner cannot be banned', 400);
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true } });
+
+  if (!target) {
+    return c.text('User not found', 404);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = z.object({ reason: z.string().trim().max(200).optional() }).safeParse(body ?? {});
+
+  if (!parsed.success) {
+    return c.text('Invalid ban reason', 400);
+  }
+
+  const reason = parsed.data.reason || null;
+  const channels = await findServerChannels(server.id);
+
+  const [, removed] = await prisma.$transaction([
+    prisma.serverBan.upsert({
+      where: { serverId_userId: { serverId: server.id, userId: targetId } },
+      create: { id: generateId(), serverId: server.id, userId: targetId, bannedById: actorId, reason },
+      update: { bannedById: actorId, reason },
+      select: { id: true },
+    }),
+    prisma.serverMember.deleteMany({ where: { serverId: server.id, userId: targetId } }),
+    prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } }),
+  ]);
+
+  if (removed.count > 0) {
+    evictServerMember(server.id, targetId, channels);
+  }
+
+  return c.body(null, 204);
+});
+
+app.delete('/:id/bans/:userId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const actorId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, moderationLimiter, actorId);
+  if (limited) return limited;
+
+  const server = await findManageableServer(c.req.param('id'), actorId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, actorId)) {
+    return c.text('Only the server owner can unban members', 403);
+  }
+
+  const ban = await getBan(server.id, c.req.param('userId'));
+
+  if (!ban) {
+    return c.text('Ban not found', 404);
+  }
+
+  await prisma.serverBan.delete({ where: { id: ban.id } });
+
+  return c.body(null, 204);
+});
+
+app.get('/:id/bans', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const actorId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, moderationLimiter, actorId);
+  if (limited) return limited;
+
+  const server = await findManageableServer(c.req.param('id'), actorId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, actorId)) {
+    return c.text('Only the server owner can view bans', 403);
+  }
+
+  const bans = await prisma.serverBan.findMany({
+    where: { serverId: server.id },
+    select: {
+      reason: true,
+      createdAt: true,
+      user: { select: { id: true, username: true, displayName: true } },
+      bannedBy: { select: { id: true, username: true, displayName: true } },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: 100,
+  });
+
+  return c.json(bans.map(({ user, ...ban }) => ({ ...user, ...ban })));
 });
 
 app.post('/:id/leave', async (c) => {
