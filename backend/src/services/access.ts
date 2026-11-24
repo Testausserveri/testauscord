@@ -17,6 +17,10 @@ export const canAccessChannel = async (userId: string, channelId: string): Promi
             where: { userId },
             select: { id: true },
           },
+          bans: {
+            where: { userId },
+            select: { id: true },
+          },
         },
       },
     },
@@ -24,7 +28,7 @@ export const canAccessChannel = async (userId: string, channelId: string): Promi
 
   if (!channel) return false;
 
-  if (channel.serverId) return (channel.server?.members.length ?? 0) > 0;
+  if (channel.serverId) return (channel.server?.members.length ?? 0) > 0 && (channel.server?.bans.length ?? 0) === 0;
 
   return channel.members.length > 0;
 };

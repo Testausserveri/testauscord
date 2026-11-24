@@ -3,9 +3,13 @@ import { afterAll, expect, mock, test } from 'bun:test';
 let friendship: { id: string } | null = null;
 let sharedServer: { id: string } | null = null;
 let pendingRequest: { id: string } | null = null;
+let sharedServerArgs: { where: { userId: string; server: { members: { some: { userId: string } }; bans: { none: { userId: string } } } } } | null = null;
 
 const friendshipFind = mock(async () => friendship);
-const serverMemberFind = mock(async () => sharedServer);
+const serverMemberFind = mock(async (args: { where: { userId: string; server: { members: { some: { userId: string } }; bans: { none: { userId: string } } } } }) => {
+  sharedServerArgs = args;
+  return sharedServer;
+});
 const friendRequestFind = mock(async (_args: { where: { OR: { senderId: string; receiverId: string }[] } }) => pendingRequest);
 
 mock.module('../db', () => ({
@@ -24,6 +28,7 @@ const reset = () => {
   friendship = null;
   sharedServer = null;
   pendingRequest = null;
+  sharedServerArgs = null;
 };
 
 test('lets users view themselves without a lookup', async () => {
@@ -42,6 +47,7 @@ test('lets friends and server co-members view each other', async () => {
   reset();
   sharedServer = { id: 'member-1' };
   expect(await canViewUser('user-a', 'user-b')).toBe(true);
+  expect(sharedServerArgs?.where.server.bans).toEqual({ none: { userId: 'user-a' } });
 });
 
 test('lets pending requesters and receivers view each other', async () => {

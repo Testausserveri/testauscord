@@ -20,7 +20,7 @@ export const canViewUser = async (viewerId: string, targetId: string): Promise<b
       select: { id: true },
     }),
     prisma.serverMember.findFirst({
-      where: { userId: viewerId, server: { members: { some: { userId: targetId } } } },
+      where: { userId: viewerId, server: { members: { some: { userId: targetId } }, bans: { none: { userId: viewerId } } } },
       select: { id: true },
     }),
     prisma.friendRequest.findFirst({

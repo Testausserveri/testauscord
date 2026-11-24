@@ -37,6 +37,8 @@ model User {
   ownedServers Server[] @relation("ServerOwner")
   serverMembers ServerMember[]
   createdInvites ServerInvite[]
+  receivedBans ServerBan[] @relation("ServerBansReceived")
+  issuedBans ServerBan[] @relation("ServerBansIssued")
 }
 
 model Server {
@@ -50,6 +52,7 @@ model Server {
   channels Channel[]
   categories ChannelCategory[]
   invites ServerInvite[]
+  bans ServerBan[]
 }
 
 model ChannelCategory {
@@ -88,6 +91,23 @@ model ServerMember {
 
   @@unique([serverId, userId])
   @@index([userId])
+}
+
+model ServerBan {
+  id         String   @id
+  serverId   String
+  userId     String
+  bannedById String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user     User   @relation("ServerBansReceived", fields: [userId], references: [id], onDelete: Cascade)
+  bannedBy User   @relation("ServerBansIssued", fields: [bannedById], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+  @@index([bannedById])
 }
 
 model FriendRequest {

@@ -7,6 +7,7 @@ import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
+import { getBan } from '../services/moderation';
 import { planCategoryDelete, planChannelAssign, nextPosition } from '../services/serverLayout';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
@@ -139,7 +140,7 @@ app.get('/', async (c) => {
   }
 
   const servers = await prisma.server.findMany({
-    where: { members: { some: { userId: c.get('user')!.id } } },
+    where: { members: { some: { userId: c.get('user')!.id } }, bans: { none: { userId: c.get('user')!.id } } },
     select: serverSelect,
     orderBy: { createdAt: 'asc' },
   });
@@ -178,6 +179,10 @@ app.post('/join', async (c) => {
     return c.text('Invalid invite code', 404);
   }
 
+  if (await getBan(invite.serverId, userId)) {
+    return c.text('You are banned from this server', 403);
+  }
+
   const existing = await prisma.serverMember.findUnique({
     where: { serverId_userId: { serverId: invite.serverId, userId } },
     select: { id: true },
@@ -209,7 +214,7 @@ app.get('/:id', async (c) => {
   }
 
   const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
+    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } }, bans: { none: { userId: c.get('user')!.id } } },
     select: {
       ...serverSelect,
       members: {
