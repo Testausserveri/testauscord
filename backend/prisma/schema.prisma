@@ -23,6 +23,7 @@ model User {
   username String @unique
   displayName String?
   bio String?
+  avatarVersion Int?
   password String
   sessions Session[]
 
@@ -39,6 +40,17 @@ model User {
   createdInvites ServerInvite[]
   receivedBans ServerBan[] @relation("ServerBansReceived")
   issuedBans ServerBan[] @relation("ServerBansIssued")
+
+  avatar Avatar?
+}
+
+model Avatar {
+  userId      String   @id
+  data        Bytes
+  contentType String
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Server {
