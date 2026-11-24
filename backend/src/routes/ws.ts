@@ -3,7 +3,7 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { validateSessionId } from '../auth/session';
-import { addConnection, checkFrameBudget, getUserId, isSubscribed, markAlive, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
+import { checkFrameBudget, getUserId, isSubscribed, markAlive, openConnection, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
 import { redeemTicket } from '../realtime/ticket';
@@ -49,15 +49,12 @@ app.get(
     await next();
   },
   upgradeWebSocket(async (c) => {
-    const userId = c.get('user')!.id;
+    const user = c.get('user')!;
     const session = c.get('session')!;
 
     return {
       onOpen(_, ctx) {
-        const ws = ctx.raw as ServerWebSocket;
-        if (!addConnection(ws, userId, session.id, session.expiresAt.getTime())) {
-          ws.close(4009, 'Too many connections');
-        }
+        openConnection(ctx.raw as ServerWebSocket, user, session.id, session.expiresAt.getTime());
       },
 
       async onMessage(event, ctx) {

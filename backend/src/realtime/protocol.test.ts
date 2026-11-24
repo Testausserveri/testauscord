@@ -1,5 +1,16 @@
 import { expect, test } from 'bun:test';
-import { clientFrameSchema } from './protocol';
+import { HEARTBEAT_INTERVAL_MS, PROTOCOL_VERSION, clientFrameSchema, readyFrame } from './protocol';
+
+test('builds a READY frame with the user and protocol settings', () => {
+  expect(readyFrame({ id: 'user-1', username: 'alice' })).toEqual({
+    type: 'READY',
+    data: {
+      user: { id: 'user-1', username: 'alice' },
+      protocolVersion: PROTOCOL_VERSION,
+      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+    },
+  });
+});
 
 test('accepts valid client frames', () => {
   expect(

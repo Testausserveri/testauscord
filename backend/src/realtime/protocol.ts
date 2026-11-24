@@ -81,6 +81,11 @@ export type ServerFrame =
 
 export type ServerFrameType = ServerFrame['type'];
 
+export const readyFrame = (user: UserRef): ServerFrame => ({
+  type: 'READY',
+  data: { user, protocolVersion: PROTOCOL_VERSION, heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS },
+});
+
 export const messageCreateFrame = (message: MessageDTO): ServerFrame => ({
   type: 'MESSAGE_CREATE',
   data: { message },

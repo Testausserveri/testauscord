@@ -7,6 +7,7 @@ import {
   closeSessionConnections,
   closeUserConnections,
   markAlive,
+  openConnection,
   publishToChannel,
   publishToUser,
   removeConnection,
@@ -265,6 +266,37 @@ test('caps connections per user', () => {
   for (const socket of sockets) removeConnection(socket.ws);
   removeConnection(extra.ws);
   removeConnection(other.ws);
+});
+
+test('sends READY after the connection is accepted', () => {
+  const socket = createSocket();
+
+  openConnection(socket.ws, { id: 'user-ready', username: 'alice' }, 'session-ready', Date.now() + 60_000);
+
+  expect(socket.closed).toEqual([]);
+  expect(JSON.parse(socket.sent[0]!)).toMatchObject({
+    type: 'READY',
+    data: { user: { id: 'user-ready', username: 'alice' } },
+  });
+
+  removeConnection(socket.ws);
+});
+
+test('sends nothing when the connection cap rejects the socket', () => {
+  const now = Date.now();
+  const sockets = Array.from({ length: MAX_CONNECTIONS_PER_USER }, () => createSocket());
+
+  for (const socket of sockets) {
+    addConnection(socket.ws, 'user-ready-cap', 'session-ready-cap', now + 60_000, now);
+  }
+
+  const extra = createSocket();
+  openConnection(extra.ws, { id: 'user-ready-cap', username: 'alice' }, 'session-ready-cap-extra', now + 60_000, now);
+
+  expect(extra.sent).toEqual([]);
+  expect(extra.closed).toEqual([4009]);
+
+  for (const socket of sockets) removeConnection(socket.ws);
 });
 
 test('limits frames sent on one connection', () => {

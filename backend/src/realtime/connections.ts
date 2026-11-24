@@ -1,6 +1,17 @@
 import type { ServerWebSocket } from 'bun';
 import { createRateLimiter, type RateLimiter } from '../utils/rateLimit';
-import { FRAME_WINDOW_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS, sessionRevokedFrame, type ServerFrame } from './protocol';
+import {
+  FRAME_WINDOW_MS,
+  HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_TIMEOUT_MS,
+  MAX_CONNECTIONS_PER_USER,
+  MAX_FRAMES_PER_WINDOW,
+  MAX_SUBSCRIPTIONS,
+  readyFrame,
+  sessionRevokedFrame,
+  type ServerFrame,
+  type UserRef,
+} from './protocol';
 
 type Connection = {
   ws: ServerWebSocket;
@@ -44,6 +55,15 @@ export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: st
   });
 
   return true;
+};
+
+export const openConnection = (ws: ServerWebSocket, user: UserRef, sessionId: string, sessionExpiresAt: number, now = Date.now()): void => {
+  if (!addConnection(ws, user.id, sessionId, sessionExpiresAt, now)) {
+    ws.close(4009, 'Too many connections');
+    return;
+  }
+
+  ws.send(JSON.stringify(readyFrame(user)));
 };
 
 export const removeConnection = (ws: ServerWebSocket): void => {
