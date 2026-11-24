@@ -18,10 +18,10 @@ const LOGOUT_TOASTS: Record<LogoutReason, LogoutToast> = {
 };
 
 const readToast = (): LogoutToast | null => {
-  const stored = sessionStorage.getItem(STORAGE_KEY);
-  if (!stored) return null;
-
   try {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+
     return JSON.parse(stored) as LogoutToast;
   } catch {
     return null;
@@ -35,8 +35,13 @@ export const logoutToLogin = (reason: LogoutReason) => {
   const current = readToast();
 
   queryClient.clear();
+
   if (!current || next.priority >= current.priority) {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // storage unavailable
+    }
   }
 
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
@@ -45,6 +50,12 @@ export const logoutToLogin = (reason: LogoutReason) => {
 
 export const takeLogoutToast = (): Omit<LogoutToast, 'priority'> | null => {
   const toast = readToast();
-  sessionStorage.removeItem(STORAGE_KEY);
+
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage unavailable
+  }
+
   return toast ? { message: toast.message, type: toast.type } : null;
 };
