@@ -89,3 +89,9 @@ export type ServerInvite = {
   expiresAt: string;
   createdBy: UserRef;
 };
+
+export type ServerBan = UserRef & {
+  reason: string | null;
+  createdAt: string;
+  bannedBy: UserRef;
+};

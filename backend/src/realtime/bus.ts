@@ -10,6 +10,12 @@ export type DomainEvent =
       type: 'SERVER_MEMBER_REMOVED';
       serverId: string;
       userId: string;
+      reason: 'kick' | 'ban' | 'leave';
+    }
+  | {
+      type: 'SERVER_MEMBER_ADDED';
+      serverId: string;
+      recipientIds: string[];
     }
   | {
       type: 'SERVER_UPDATED';

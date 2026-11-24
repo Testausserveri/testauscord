@@ -9,6 +9,7 @@ import type {
   ProfileDTO,
   ProfilePatch,
   Server,
+  ServerBan,
   ServerCategory,
   ServerChannel,
   ServerDetail,
@@ -180,6 +181,18 @@ export const revokeInvite = async (serverId: string, code: string) => {
 
 export const removeMember = async (serverId: string, userId: string) => {
   await axios.delete(`${API_URL}/servers/${serverId}/members/${userId}`, { withCredentials: true });
+};
+
+export const banMember = async (serverId: string, userId: string, reason?: string) => {
+  await axios.put(`${API_URL}/servers/${serverId}/bans/${userId}`, reason ? { reason } : {}, { withCredentials: true });
+};
+
+export const unbanMember = async (serverId: string, userId: string) => {
+  await axios.delete(`${API_URL}/servers/${serverId}/bans/${userId}`, { withCredentials: true });
+};
+
+export const getBans = async (serverId: string): Promise<ServerBan[]> => {
+  return await axios.get(`${API_URL}/servers/${serverId}/bans`, { withCredentials: true }).then((res) => res.data);
 };
 
 export const leaveServer = async (serverId: string) => {

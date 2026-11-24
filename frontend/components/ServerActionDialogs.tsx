@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createInvite, getInvites, getServer, getUser, leaveServer, removeMember, revokeInvite } from '@/api/api';
+import { banMember, createInvite, getInvites, getServer, getUser, leaveServer, removeMember, revokeInvite } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
-import { CurrentUser, Server, ServerAction, ServerDetail, ServerInvite } from '@/types/types';
+import { CurrentUser, Server, ServerAction, ServerDetail, ServerInvite, UserRef } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
+import { Label } from './ui/label';
 import { useProfilePopover } from './ProfilePopoverProvider';
 import { ServerSettingsDialog } from './ServerSettingsDialog';
 
@@ -26,6 +27,8 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [moderation, setModeration] = useState<{ kind: 'kick' | 'ban'; member: UserRef } | null>(null);
+  const [banReason, setBanReason] = useState('');
 
   const serverId = server?.id;
 
@@ -56,6 +59,8 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
     setCopied(false);
     setBusy(false);
     setError(null);
+    setModeration(null);
+    setBanReason('');
     onClose();
   };
 
@@ -100,17 +105,35 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
     }
   };
 
-  const handleRemoveMember = async (userId: string) => {
-    if (!serverId || busy) return;
+  const openModeration = (kind: 'kick' | 'ban', member: UserRef) => {
+    setError(null);
+    setBanReason('');
+    setModeration({ kind, member });
+  };
+
+  const closeModeration = () => {
+    setModeration(null);
+    setBanReason('');
+    setBusy(false);
+    setError(null);
+  };
+
+  const handleModeration = async () => {
+    if (!serverId || !moderation || busy) return;
 
     setBusy(true);
     setError(null);
     try {
-      await removeMember(serverId, userId);
+      if (moderation.kind === 'kick') {
+        await removeMember(serverId, moderation.member.id);
+      } else {
+        await banMember(serverId, moderation.member.id, banReason.trim() || undefined);
+      }
       await queryClient.invalidateQueries({ queryKey: ['server', serverId] });
+      await queryClient.invalidateQueries({ queryKey: ['server-bans', serverId] });
+      closeModeration();
     } catch (caught) {
       setError(apiErrorMessage(caught));
-    } finally {
       setBusy(false);
     }
   };
@@ -193,7 +216,7 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
             <DialogTitle>
               Members of <b>{server?.name}</b>
             </DialogTitle>
-            <DialogDescription>{isOwner ? 'Remove members who should no longer have access.' : 'People with access to this server.'}</DialogDescription>
+            <DialogDescription>{isOwner ? 'Kick removes access until a new invite. Ban blocks the user until you unban them.' : 'People with access to this server.'}</DialogDescription>
           </DialogHeader>
           {detailPending ? (
             <p className="text-sm text-muted-foreground">Loading members...</p>
@@ -208,9 +231,14 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
                   {member.id === server?.ownerId ? (
                     <span className="text-xs text-muted-foreground">Owner</span>
                   ) : isOwner ? (
-                    <Button type="button" variant="destructive" size="sm" onClick={() => handleRemoveMember(member.id)} disabled={busy}>
-                      Remove
-                    </Button>
+                    <div className="flex shrink-0 gap-1">
+                      <Button type="button" variant="secondary" size="sm" onClick={() => openModeration('kick', member)} disabled={busy}>
+                        Kick
+                      </Button>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => openModeration('ban', member)} disabled={busy}>
+                        Ban
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               ))}
@@ -219,6 +247,34 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
             <p className="text-sm text-muted-foreground">Members unavailable.</p>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={moderation !== null} onOpenChange={(open) => !open && closeModeration()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {moderation?.kind === 'ban' ? 'Ban' : 'Kick'} <b>{moderation?.member.displayName ?? moderation?.member.username}</b>?
+            </DialogTitle>
+            <DialogDescription>
+              {moderation?.kind === 'ban' ? `They lose access to ${server?.name} and cannot rejoin until you unban them.` : `They lose access to ${server?.name} until they join with a new invite.`}
+            </DialogDescription>
+          </DialogHeader>
+          {moderation?.kind === 'ban' && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ban-reason">Reason (optional)</Label>
+              <Input id="ban-reason" value={banReason} onChange={(event) => setBanReason(event.target.value)} maxLength={200} placeholder="Why they were banned" disabled={busy} />
+            </div>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeModeration}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleModeration} disabled={busy}>
+              {moderation?.kind === 'ban' ? 'Ban' : 'Kick'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

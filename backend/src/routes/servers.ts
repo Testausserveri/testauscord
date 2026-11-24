@@ -50,7 +50,7 @@ const findManageableServer = (serverId: string, userId: string) =>
 
 const findServerChannels = (serverId: string) => prisma.channel.findMany({ where: { serverId }, select: { id: true } });
 
-const evictServerMember = (serverId: string, userId: string, channels: { id: string }[]) => {
+const evictServerMember = (serverId: string, userId: string, channels: { id: string }[], reason: 'kick' | 'ban') => {
   try {
     for (const channel of channels) unsubscribeUserFromChannel(userId, channel.id);
   } catch (error) {
@@ -58,7 +58,7 @@ const evictServerMember = (serverId: string, userId: string, channels: { id: str
     console.error(`Failed to unsubscribe ${userId} from server ${serverId}`, error);
   }
 
-  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId, userId });
+  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId, userId, reason });
 };
 
 const serverSelect = {
@@ -217,7 +217,11 @@ app.post('/join', async (c) => {
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
+    return c.json(invite.server, 201);
   }
+
+  const members = await prisma.serverMember.findMany({ where: { serverId: invite.serverId }, select: { userId: true } });
+  eventBus.publish({ type: 'SERVER_MEMBER_ADDED', serverId: invite.serverId, recipientIds: members.map((member) => member.userId) });
 
   return c.json(invite.server, 201);
 });
@@ -795,7 +799,7 @@ app.delete('/:id/members/:userId', async (c) => {
 
   await prisma.$transaction([prisma.serverMember.delete({ where: { id: membership.id } }), prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } })]);
 
-  evictServerMember(server.id, targetId, channels);
+  evictServerMember(server.id, targetId, channels, 'kick');
 
   return c.body(null, 204);
 });
@@ -857,7 +861,7 @@ app.put('/:id/bans/:userId', async (c) => {
   ]);
 
   if (removed.count > 0) {
-    evictServerMember(server.id, targetId, channels);
+    evictServerMember(server.id, targetId, channels, 'ban');
   }
 
   return c.body(null, 204);
@@ -963,7 +967,7 @@ app.post('/:id/leave', async (c) => {
     unsubscribeUserFromChannel(userId, channel.id);
   }
 
-  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: c.req.param('id'), userId });
+  eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: c.req.param('id'), userId, reason: 'leave' });
 
   return c.body(null, 204);
 });

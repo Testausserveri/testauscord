@@ -144,6 +144,11 @@ const countMembers = mock(async ({ where }: { where: { userId: string } }) => {
   return servers.filter((server) => server.members.includes(where.userId)).length;
 });
 
+const findMembers = mock(async ({ where }: { where: { serverId: string } }) => {
+  const server = servers.find((entry) => entry.id === where.serverId);
+  return (server?.members ?? []).map((userId) => ({ userId }));
+});
+
 const createMember = mock(async ({ data }: { data: { id: string; serverId: string; userId: string } }) => {
   servers.find((server) => server.id === data.serverId)?.members.push(data.userId);
   return { id: data.id };
@@ -156,6 +161,7 @@ mock.module('../db', () => ({
     serverBan: { findUnique: findBan, findMany: findBans, upsert: upsertBan, delete: deleteBan },
     serverMember: {
       findUnique: findMember,
+      findMany: findMembers,
       delete: deleteMembership,
       deleteMany: deleteMemberships,
       count: countMembers,
@@ -251,6 +257,7 @@ beforeEach(() => {
   deleteMemberships.mockClear();
   deleteInvites.mockClear();
   countMembers.mockClear();
+  findMembers.mockClear();
   createMember.mockClear();
 });
 
@@ -282,6 +289,15 @@ test('lets a previously banned user join after the ban is removed', async () => 
 
   expect(response.status).toBe(201);
   expect(servers.find((server) => server.id === serverId)?.members).toContain('intruder-unbanned');
+});
+
+test('announces a new member to everyone in the server', async () => {
+  const { serverId } = seedServer('member-added');
+
+  const response = await post(createApp('newcomer-member-added'), '/join', { code: 'code-member-added' });
+
+  expect(response.status).toBe(201);
+  expect(events).toEqual([{ type: 'SERVER_MEMBER_ADDED', serverId, recipientIds: ['owner-member-added', 'member-member-added', 'newcomer-member-added'] }]);
 });
 
 test('a ban on one server does not block joining another', async () => {
@@ -335,7 +351,7 @@ test('bans a member and removes the membership and their invites', async () => {
   expect(servers.find((server) => server.id === serverId)?.members).not.toContain(memberId);
   expect(bans).toEqual([expect.objectContaining({ serverId, userId: memberId, bannedById: ownerId, reason: 'spam' })]);
   expect(invites.map((invite) => invite.code)).toEqual(['code-ban-member']);
-  expect(events).toEqual([{ type: 'SERVER_MEMBER_REMOVED', serverId, userId: memberId }]);
+  expect(events).toEqual([{ type: 'SERVER_MEMBER_REMOVED', serverId, userId: memberId, reason: 'ban' }]);
 });
 
 test('drops a banned member from every server channel', async () => {
@@ -507,7 +523,7 @@ test('kicks a member, removes their invites and lets them rejoin with a fresh in
   expect(response.status).toBe(204);
   expect(servers.find((server) => server.id === serverId)?.members).not.toContain(memberId);
   expect(invites.map((invite) => invite.code)).toEqual(['code-kick']);
-  expect(events).toEqual([{ type: 'SERVER_MEMBER_REMOVED', serverId, userId: memberId }]);
+  expect(events).toEqual([{ type: 'SERVER_MEMBER_REMOVED', serverId, userId: memberId, reason: 'kick' }]);
 
   invites.push({ id: 'fresh-invite-kick', code: 'fresh-code-kick', serverId, createdById: ownerId, expiresAt: new Date(Date.now() + 60_000) });
   const rejoin = await post(createApp(memberId), '/join', { code: 'fresh-code-kick' });

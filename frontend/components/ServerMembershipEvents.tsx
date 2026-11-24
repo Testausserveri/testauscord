@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
 import { getServerRoute } from '@/lib/serverRoutes';
 import type { Server, ServerCategory, ServerChannel, ServerDetail } from '@/types/types';
@@ -17,10 +18,16 @@ export function ServerMembershipEvents() {
     () =>
       addListener((frame) => {
         if (frame.type === 'SERVER_MEMBER_REMOVED') {
-          const serverId = (frame.data as { serverId?: unknown } | undefined)?.serverId;
+          const data = frame.data as { serverId?: unknown; reason?: unknown } | undefined;
+          const serverId = data?.serverId;
           if (typeof serverId !== 'string') return;
 
           const removed = queryClient.getQueryData<Server[]>(['servers'])?.find((server) => server.id === serverId);
+
+          if (data?.reason === 'kick' || data?.reason === 'ban') {
+            toast.error(data.reason === 'kick' ? `You were kicked from ${removed?.name ?? 'the server'}` : `You were banned from ${removed?.name ?? 'the server'}`);
+          }
+
           if (removed) {
             for (const channel of removed.channels) {
               queryClient.removeQueries({ queryKey: ['messages', channel.id] });
@@ -36,6 +43,14 @@ export function ServerMembershipEvents() {
             router.push('/channels/@me');
           }
 
+          return;
+        }
+
+        if (frame.type === 'SERVER_MEMBER_ADDED') {
+          const serverId = (frame.data as { serverId?: unknown } | undefined)?.serverId;
+          if (typeof serverId !== 'string') return;
+
+          void queryClient.invalidateQueries({ queryKey: ['server', serverId] });
           return;
         }
 

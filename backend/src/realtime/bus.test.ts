@@ -46,7 +46,7 @@ test('publishes membership events', () => {
     if (event.type === 'SERVER_MEMBER_REMOVED') seen.push(event.serverId);
   });
 
-  bus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: 'server-1', userId: 'user-1' });
+  bus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId: 'server-1', userId: 'user-1', reason: 'kick' });
 
   stop();
 
