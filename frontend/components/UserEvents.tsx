@@ -19,6 +19,7 @@ export function UserEvents() {
 
         queryClient.setQueryData<CurrentUser>(['user'], (current) => (current?.id === user.id ? { ...current, username: user.username, displayName: user.displayName } : current));
         void queryClient.invalidateQueries({ queryKey: ['friends'] });
+        void queryClient.invalidateQueries({ queryKey: ['profile', user.id] });
       }),
     [addListener, queryClient],
   );

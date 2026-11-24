@@ -200,7 +200,7 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
               {detail.members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{member.username}</p>
+                    <p className="truncate text-sm font-medium">{member.displayName ?? member.username}</p>
                     <p className="text-xs text-muted-foreground">Joined {new Date(member.joinedAt).toLocaleDateString()}</p>
                   </div>
                   {member.id === server?.ownerId ? (

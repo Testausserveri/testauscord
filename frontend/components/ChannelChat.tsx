@@ -9,7 +9,8 @@ import { Button } from './ui/button';
 import { Send } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { useProfilePopover } from './ProfilePopoverProvider';
+import { UserAvatar } from './UserAvatar';
 import Loader from './Loader';
 
 const formatTimestamp = (timestamp: string) => {
@@ -52,6 +53,7 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const { openProfile } = useProfilePopover();
 
   const {
     data: messagesData,
@@ -206,16 +208,14 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
                 <div key={message.id} className={`group hover:bg-muted/50 ${isGrouped ? 'px-1' : 'px-2'} py-1 rounded transition-colors ${isGrouped ? 'mt-0.5' : 'mt-4'}`}>
                   {!isGrouped ? (
                     <div className="flex gap-4">
-                      <Avatar className="h-10 w-10 mt-0.5 flex-shrink-0">
-                        <AvatarImage src={''} alt={message.sender.username} />
-                        <AvatarFallback className="bg-muted">
-                          {message.sender.username.charAt(0)}
-                          {message.sender.username.split(' ')[1]?.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <button type="button" onClick={(event) => openProfile(message.sender.id, event.currentTarget)} aria-label="View profile" className="flex-shrink-0">
+                        <UserAvatar user={message.sender} className="h-10 w-10 mt-0.5" />
+                      </button>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium hover:underline cursor-pointer">{message.sender.username}</span>
+                          <button type="button" onClick={(event) => openProfile(message.sender.id, event.currentTarget)} className="font-medium hover:underline cursor-pointer">
+                            {message.sender.displayName ?? message.sender.username}
+                          </button>
                           <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">{formatTimestamp(message.createdAt)}</span>
                         </div>
                         <div className="text-foreground leading-[1.375] break-words">{message.content}</div>

@@ -26,6 +26,18 @@ export type Friend = {
   friend: UserRef;
 };
 
+export type IncomingFriendRequest = {
+  id: string;
+  createdAt: string;
+  sender: UserRef;
+};
+
+export type OutgoingFriendRequest = {
+  id: string;
+  createdAt: string;
+  receiver: UserRef;
+};
+
 type MessageSender = UserRef;
 
 export type Message = {

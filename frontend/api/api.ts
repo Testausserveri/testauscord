@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosError } from 'axios';
 import { logoutToLogin } from '@/lib/logout';
-import type { AccountSession, CurrentUser, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
+import type { AccountSession, CurrentUser, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO, Server, ServerChannel, ServerDetail, ServerInvite } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -82,8 +82,20 @@ export const getUser = async (): Promise<CurrentUser> => {
   return await axios.get(`${API_URL}/users/@me`, { withCredentials: true }).then((res) => res.data);
 };
 
+export const getUserProfile = async (id: string): Promise<ProfileDTO> => {
+  return await axios.get(`${API_URL}/users/${encodeURIComponent(id)}`, { withCredentials: true }).then((res) => res.data);
+};
+
 export const getFriends = async () => {
   return await axios.get(`${API_URL}/friends`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const getPendingRequests = async (): Promise<IncomingFriendRequest[]> => {
+  return await axios.get(`${API_URL}/friends/pendingRequests`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const getSentRequests = async (): Promise<OutgoingFriendRequest[]> => {
+  return await axios.get(`${API_URL}/friends/sentRequests`, { withCredentials: true }).then((res) => res.data);
 };
 
 export const getServers = async (): Promise<Server[]> => {

@@ -11,6 +11,7 @@ import { SidebarInset } from '@/components/ui/sidebar';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { ServerMembershipEvents } from '@/components/ServerMembershipEvents';
 import { UserEvents } from '@/components/UserEvents';
+import { ProfilePopoverProvider } from '@/components/ProfilePopoverProvider';
 import { getServerRoute } from '@/lib/serverRoutes';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -19,16 +20,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <WebSocketProvider>
-      <ServerMembershipEvents />
-      <UserEvents />
-      <SidebarProvider>
-        <div className="flex h-screen w-full">
-          <ServerRail />
-          {isServerRoute ? <ServerSidebar /> : <DmsSidebar />}
-          <SidebarToggle />
-          <SidebarInset>{children}</SidebarInset>
-        </div>
-      </SidebarProvider>
+      <ProfilePopoverProvider>
+        <ServerMembershipEvents />
+        <UserEvents />
+        <SidebarProvider>
+          <div className="flex h-screen w-full">
+            <ServerRail />
+            {isServerRoute ? <ServerSidebar /> : <DmsSidebar />}
+            <SidebarToggle />
+            <SidebarInset>{children}</SidebarInset>
+          </div>
+        </SidebarProvider>
+      </ProfilePopoverProvider>
     </WebSocketProvider>
   );
 }

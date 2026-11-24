@@ -8,11 +8,13 @@ import { getFriends } from '@/api/api';
 import { Friend } from '@/types/types';
 
 export function FriendsList() {
-  const { data } = useQuery({
+  const { data } = useQuery<Friend[]>({
     queryKey: ['friends'],
     queryFn: getFriends,
     staleTime: 1000 * 20,
   });
+
+  const friends = data ? [...data].sort((a, b) => (a.friend.displayName ?? a.friend.username).localeCompare(b.friend.displayName ?? b.friend.username)) : undefined;
 
   return (
     <div className="h-full flex flex-col">
@@ -27,8 +29,8 @@ export function FriendsList() {
         <h3 className="text-xs font-semibold mb-2">ALL FRIENDS — {data?.length}</h3>
 
         <div className="gap-1 flex flex-col">
-          {data?.map((friend: Friend) => (
-            <FriendCard key={friend.id} name={friend.friend.username} id={friend.id} avatar="" />
+          {friends?.map((friend: Friend) => (
+            <FriendCard key={friend.id} friend={friend} />
           ))}
         </div>
       </div>

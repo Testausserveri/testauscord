@@ -8,9 +8,9 @@ import { getFriends } from '@/api/api';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
 import { Friend } from '@/types/types';
 import { useQuery } from '@tanstack/react-query';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { UserAvatar } from './UserAvatar';
+import { UserPanel } from './UserPanel';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
-
 const navItems = [
   {
     title: 'Friends',
@@ -57,17 +57,9 @@ export function DmsSidebar() {
                 <SidebarMenuItem key={friend.friend.id}>
                   <SidebarMenuButton asChild isActive={pathname === `/channels/@me/${friend.id}`}>
                     <Link href={`/channels/@me/${friend.id}`} className="py-5">
-                      <div className="relative mr-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src="" alt={friend.friend.username} />
-                          <AvatarFallback className="bg-muted">
-                            {friend.friend.username.charAt(0)}
-                            {friend.friend.username.split(' ')[1]?.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
+                      <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
                       <div className="flex-1">
-                        <p className="font-semibold">{friend.friend.username}</p>
+                        <p className="font-semibold">{friend.friend.displayName ?? friend.friend.username}</p>
                       </div>
                     </Link>
                   </SidebarMenuButton>
@@ -77,6 +69,7 @@ export function DmsSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <UserPanel />
     </Sidebar>
   );
 }

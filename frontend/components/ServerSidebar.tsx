@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ServerActionDialogs } from '@/components/ServerActionDialogs';
+import { UserPanel } from '@/components/UserPanel';
 import {
   Sidebar,
   SidebarContent,
@@ -168,6 +169,8 @@ export function ServerSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <UserPanel />
 
       <Dialog open={channelDialogOpen} onOpenChange={(open) => !open && closeChannelDialog()}>
         <DialogContent>

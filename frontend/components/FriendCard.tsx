@@ -1,30 +1,23 @@
-import { MoreHorizontal, Phone, Video } from 'lucide-react';
+'use client';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { MoreHorizontal, Phone, Video } from 'lucide-react';
 import Link from 'next/link';
 
-interface FriendCardProps {
-  name: string;
-  id: string;
-  avatar: string;
-}
+import { Button } from '@/components/ui/button';
+import { useProfilePopover } from '@/components/ProfilePopoverProvider';
+import { UserAvatar } from '@/components/UserAvatar';
+import type { Friend } from '@/types/types';
 
-export function FriendCard({ name, id, avatar }: FriendCardProps) {
+export function FriendCard({ friend }: { friend: Friend }) {
+  const { openProfile } = useProfilePopover();
+  const name = friend.friend.displayName ?? friend.friend.username;
+
   return (
-    <Link href={`/channels/@me/${id}`} className="rounded-lg p-3 flex items-center hover:bg-accent">
-      <div className="relative mr-3">
-        <Avatar className="h-8 w-8">
-          <AvatarImage src={avatar} alt={name} />
-          <AvatarFallback className="bg-muted">
-            {name.charAt(0)}
-            {name.split(' ')[1]?.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
-      </div>
-      <div className="flex-1">
-        <p className="font-semibold">{name}</p>
-      </div>
+    <div className="rounded-lg p-3 flex items-center hover:bg-accent">
+      <Link href={`/channels/@me/${friend.id}`} className="flex flex-1 items-center min-w-0">
+        <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
+        <p className="font-semibold truncate">{name}</p>
+      </Link>
       <div className="flex gap-1">
         <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 bg-muted hover:bg-accent">
           <Video className="h-5 w-5 " />
@@ -34,11 +27,11 @@ export function FriendCard({ name, id, avatar }: FriendCardProps) {
           <Phone className="h-5 w-5 " />
           <span className="sr-only">Voice Call</span>
         </Button>
-        <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 bg-muted hover:bg-accent">
+        <Button type="button" size="icon" variant="ghost" className="rounded-full h-9 w-9 bg-muted hover:bg-accent" onClick={(event) => openProfile(friend.friend.id, event.currentTarget)}>
           <MoreHorizontal className="h-5 w-5 " />
           <span className="sr-only">More Options</span>
         </Button>
       </div>
-    </Link>
+    </div>
   );
 }
