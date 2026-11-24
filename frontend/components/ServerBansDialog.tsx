@@ -62,15 +62,10 @@ export function ServerBansDialog({ server, onClose }: Props) {
           <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
             {bans.map((ban) => (
               <div key={ban.id} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
-                <button
-                  type="button"
-                  onClick={(event) => openProfile(ban.id, event.currentTarget)}
-                  title="View profile"
-                  className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline"
-                >
+                <button type="button" onClick={(event) => openProfile(ban.id, event.currentTarget)} title="View profile" className="group flex min-w-0 items-center gap-2 rounded-sm text-left">
                   <UserAvatar user={ban} className="h-8 w-8 shrink-0" />
                   <span className="min-w-0">
-                    <p className="truncate text-sm font-medium">{ban.displayName ?? ban.username}</p>
+                    <p className="truncate text-sm font-medium group-hover:underline">{ban.displayName ?? ban.username}</p>
                     <p className="truncate text-xs text-muted-foreground">
                       {ban.reason ?? 'No reason'}, {new Date(ban.createdAt).toLocaleDateString()}, by {ban.bannedBy.displayName ?? ban.bannedBy.username}
                     </p>

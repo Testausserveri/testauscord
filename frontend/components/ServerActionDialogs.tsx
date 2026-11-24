@@ -225,8 +225,8 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
             <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
               {detail.members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
-                  <button type="button" onClick={(event) => openProfile(member.id, event.currentTarget)} title="View profile" className="min-w-0 rounded-sm text-left hover:underline">
-                    <p className="truncate text-sm font-medium">{member.displayName ?? member.username}</p>
+                  <button type="button" onClick={(event) => openProfile(member.id, event.currentTarget)} title="View profile" className="group min-w-0 rounded-sm text-left">
+                    <p className="truncate text-sm font-medium group-hover:underline">{member.displayName ?? member.username}</p>
                     <p className="text-xs text-muted-foreground">Joined {new Date(member.joinedAt).toLocaleDateString()}</p>
                   </button>
                   {member.id === server?.ownerId ? (
