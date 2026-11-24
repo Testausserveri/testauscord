@@ -28,7 +28,11 @@ const findMany = mock(async ({ where, orderBy }: { where?: Parameters<typeof mat
   return result;
 });
 
+let failSessionDelete = false;
+
 const deleteMany = mock(async ({ where }: { where?: Parameters<typeof matches>[1] } = {}) => {
+  if (failSessionDelete) throw new Error('database unavailable');
+
   const before = sessions.length;
   sessions = sessions.filter((session) => !matches(session, where ?? {}));
   return { count: before - sessions.length };
@@ -43,16 +47,34 @@ const updateUser = mock(async ({ data }: { data: { password: string } }) => {
   return { id: userId };
 });
 
+const prismaMock = {
+  session: {
+    findMany,
+    deleteMany,
+  },
+  user: {
+    findUnique: findUser,
+    update: updateUser,
+  },
+};
+
+const transaction = async <T>(run: (tx: typeof prismaMock) => Promise<T>) => {
+  const sessionSnapshot = sessions.map((session) => ({ ...session }));
+  const passwordSnapshot = passwordHash;
+
+  try {
+    return await run(prismaMock);
+  } catch (error) {
+    sessions = sessionSnapshot;
+    passwordHash = passwordSnapshot;
+    throw error;
+  }
+};
+
 mock.module('../db', () => ({
   prisma: {
-    session: {
-      findMany,
-      deleteMany,
-    },
-    user: {
-      findUnique: findUser,
-      update: updateUser,
-    },
+    ...prismaMock,
+    $transaction: transaction,
   },
 }));
 
@@ -76,6 +98,8 @@ const other = (): Row => ({
 
 const app = new Hono<{ Variables: Variables }>();
 
+app.onError((_error, c) => c.text('Internal Server Error', 500));
+
 app.use('*', async (c, next) => {
   c.set('user', { id: userId, username: 'alice' });
   c.set('session', { id: currentId, userId, expiresAt: current().expiresAt });
@@ -87,6 +111,7 @@ app.route('/', account);
 beforeEach(() => {
   sessions = [current(), other()];
   passwordHash = initialHash;
+  failSessionDelete = false;
 });
 
 afterAll(() => mock.restore());
@@ -143,4 +168,19 @@ test('changing the password revokes every session including the current one', as
   expect(response.status).toBe(200);
   expect(sessions).toHaveLength(0);
   expect(response.headers.get('set-cookie')).toContain('__Host-session=;');
+});
+
+test('keeps the old password and sessions when revocation fails', async () => {
+  failSessionDelete = true;
+
+  const response = await app.request('/account/password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ currentPassword: 'OldPass1!', newPassword: 'NewPass2@' }),
+  });
+
+  expect(response.status).toBe(500);
+  expect(sessions).toHaveLength(2);
+  expect(await Bun.password.verify('OldPass1!', passwordHash)).toBe(true);
+  expect(await Bun.password.verify('NewPass2@', passwordHash)).toBe(false);
 });

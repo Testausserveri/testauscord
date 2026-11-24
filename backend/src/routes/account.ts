@@ -127,17 +127,23 @@ app.post('/account/password', async (c) => {
     return c.text('Incorrect password', 400);
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { password: await Bun.password.hash(newPassword) },
-  });
+  const password = await Bun.password.hash(newPassword);
 
-  const sessions = await prisma.session.findMany({
-    where: { userId },
-    select: { id: true },
-  });
+  const sessions = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { password },
+    });
 
-  await prisma.session.deleteMany({ where: { userId } });
+    const rows = await tx.session.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+
+    await tx.session.deleteMany({ where: { userId } });
+
+    return rows;
+  });
 
   for (const session of sessions) {
     closeSessionConnections(session.id);
