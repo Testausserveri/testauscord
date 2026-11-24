@@ -48,7 +48,21 @@ model Server {
   owner User @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members ServerMember[]
   channels Channel[]
+  categories ChannelCategory[]
   invites ServerInvite[]
+}
+
+model ChannelCategory {
+  id String @id
+  serverId String
+  name String
+  position Int @default(0)
+  createdAt DateTime @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  channels Channel[]
+
+  @@unique([serverId, name])
 }
 
 model ServerInvite {
@@ -119,15 +133,19 @@ model Channel {
   type ChannelType @default(DM)
   name String?
   serverId String?
+  categoryId String?
   dmKey String? @unique
+  position Int @default(0)
   createdAt DateTime @default(now())
 
   members ChannelMember[]
   messages Message[]
   server Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  category ChannelCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@unique([serverId, name])
   @@index([serverId])
+  @@index([categoryId])
 }
 
 model ChannelMember {
