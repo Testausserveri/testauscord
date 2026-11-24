@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import { logoutToLogin } from '@/lib/logout';
 
@@ -42,6 +43,7 @@ interface WebSocketProviderProps {
 }
 
 export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }) => {
+  const queryClient = useQueryClient();
   const channelsRef = useRef(new Set<string>());
   const listenersRef = useRef(new Set<FrameListener>());
   const readyStateRef = useRef(ReadyState.UNINSTANTIATED);
@@ -64,6 +66,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
       if (frame?.type === 'SESSION_REVOKED') {
         logoutToLogin('revoked');
+        return;
+      }
+
+      if (frame?.type === 'READY') {
+        void queryClient.invalidateQueries({ queryKey: ['user'] });
         return;
       }
 
