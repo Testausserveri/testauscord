@@ -10,6 +10,11 @@ export type DomainEvent =
       type: 'SERVER_MEMBER_REMOVED';
       serverId: string;
       userId: string;
+    }
+  | {
+      type: 'SERVER_UPDATED';
+      server: { id: string; name: string };
+      recipientIds: string[];
     };
 
 export type EventListener = (event: DomainEvent) => void;

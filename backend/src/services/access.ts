@@ -1,5 +1,7 @@
 import { prisma } from '../db';
 
+export const isServerOwner = (server: { ownerId: string }, userId: string): boolean => server.ownerId === userId;
+
 export const canAccessChannel = async (userId: string, channelId: string): Promise<boolean> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },

@@ -52,3 +52,17 @@ test('publishes membership events', () => {
 
   expect(seen).toEqual(['server-1']);
 });
+
+test('publishes server updates with their recipients', () => {
+  const bus = createLocalBus();
+  const seen: string[][] = [];
+  const stop = bus.subscribe((event) => {
+    if (event.type === 'SERVER_UPDATED') seen.push(event.recipientIds);
+  });
+
+  bus.publish({ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed' }, recipientIds: ['user-1', 'user-2'] });
+
+  stop();
+
+  expect(seen).toEqual([['user-1', 'user-2']]);
+});

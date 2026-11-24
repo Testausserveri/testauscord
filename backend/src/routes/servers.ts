@@ -5,6 +5,7 @@ import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel } from '../realtime/connections';
+import { isServerOwner } from '../services/access';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
@@ -13,6 +14,7 @@ const app = new Hono<{ Variables: Variables }>();
 const inviteLimiter = createRateLimiter(10, 60_000);
 const serverCreateLimiter = createRateLimiter(10, 60 * 60_000);
 const serverJoinLimiter = createRateLimiter(30, 60_000);
+const serverRenameLimiter = createRateLimiter(10, 60 * 60_000);
 const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
 
@@ -193,6 +195,60 @@ app.get('/:id', async (c) => {
     },
     200,
   );
+});
+
+app.patch('/:id', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverRenameLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ name: serverNameSchema }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid server name', 400);
+  }
+
+  const server = await prisma.server.findFirst({
+    where: { id: c.req.param('id'), members: { some: { userId } } },
+    select: { id: true, name: true, ownerId: true },
+  });
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can rename this server', 403);
+  }
+
+  const name = result.data.name;
+
+  if (name === server.name) {
+    return c.json({ id: server.id, name }, 200);
+  }
+
+  const members = await prisma.serverMember.findMany({
+    where: { serverId: server.id },
+    select: { userId: true },
+  });
+
+  await prisma.server.update({
+    where: { id: server.id },
+    data: { name },
+  });
+
+  eventBus.publish({
+    type: 'SERVER_UPDATED',
+    server: { id: server.id, name },
+    recipientIds: members.map((member) => member.userId),
+  });
+
+  return c.json({ id: server.id, name }, 200);
 });
 
 app.post('/:id/channels', async (c) => {
