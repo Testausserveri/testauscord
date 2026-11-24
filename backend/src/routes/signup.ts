@@ -5,6 +5,7 @@ import { createSession, generateSessionToken } from '../auth/session';
 import { createSessionTokenCookie } from '../auth/cookie';
 import { clientIp, enforceRateLimit } from '../middleware/rateLimit';
 import { createRateLimiter } from '../utils/rateLimit';
+import { isValidUsername } from '../utils/validation';
 
 const app = new Hono();
 const signupLimiter = createRateLimiter(10, 60 * 60_000);
@@ -17,7 +18,7 @@ app.post('/signup', async (c) => {
   const username = body?.username;
   const password = body?.password;
 
-  if (typeof username !== 'string' || username.length < 3 || username.length > 31 || !/^[a-z0-9_-]+$/.test(username)) {
+  if (typeof username !== 'string' || !isValidUsername(username)) {
     return c.text('Invalid username', 400);
   }
 
