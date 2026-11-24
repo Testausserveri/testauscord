@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, ReactNode } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
-import { queryClient } from '@/lib/queryClient';
+import { logoutToLogin } from '@/lib/logout';
 
 const getSocketUrl = async () => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
@@ -13,6 +13,7 @@ const getSocketUrl = async () => {
     body: '{}',
   });
 
+  if (response.status === 401) logoutToLogin('expired');
   if (!response.ok) throw new Error(`Ticket request failed with ${response.status}`);
 
   const data = (await response.json()) as { ticket?: string };
@@ -45,13 +46,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const listenersRef = useRef(new Set<FrameListener>());
   const readyStateRef = useRef(ReadyState.UNINSTANTIATED);
 
-  const handleSessionRevoked = useCallback(() => {
-    queryClient.clear();
-    if (typeof window === 'undefined' || window.location.pathname === '/login') return;
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign('/login');
-  }, []);
-
   const { sendMessage, readyState } = useWebSocket(getSocketUrl, {
     onOpen: () => {
       readyStateRef.current = ReadyState.OPEN;
@@ -69,7 +63,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       }
 
       if (frame?.type === 'SESSION_REVOKED') {
-        handleSessionRevoked();
+        logoutToLogin('revoked');
         return;
       }
 
@@ -84,7 +78,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       for (const listener of listenersRef.current) listener(frame);
     },
     onClose: (event) => {
-      if (event.code === 4001) handleSessionRevoked();
+      if (event.code === 4001) logoutToLogin('expired');
     },
     onError: (error) => {
       console.error('WebSocket error:', error);

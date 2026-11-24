@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { CurrentUser, Server, ServerAction } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
+import { logoutToLogin } from '@/lib/logout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -115,8 +116,7 @@ export function ServerRail() {
       return;
     }
 
-    queryClient.clear();
-    router.push('/login');
+    logoutToLogin('logout');
   };
 
   return (

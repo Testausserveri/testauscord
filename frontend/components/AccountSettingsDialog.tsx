@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { changePassword, getSessions, revokeAllSessions, revokeSession } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
+import { logoutToLogin } from '@/lib/logout';
 import { useSettled } from '@/lib/useSettled';
 import type { AccountSession } from '@/types/types';
 import { Button } from './ui/button';
@@ -86,12 +87,6 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     onOpenChange(next);
   };
 
-  const goToLogin = () => {
-    queryClient.clear();
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign('/login');
-  };
-
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy) return;
@@ -111,8 +106,7 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     setBusy(true);
     try {
       await changePassword(currentPassword, newPassword);
-      toast.success('Password changed. You have been signed out.');
-      goToLogin();
+      logoutToLogin('password');
     } catch (caught) {
       const message = apiErrorMessage(caught);
       toast.error(message);
@@ -129,7 +123,7 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
       await revokeSession(session.id);
 
       if (session.current) {
-        goToLogin();
+        logoutToLogin('logout');
         return;
       }
 
@@ -148,7 +142,7 @@ export function AccountSettingsDialog({ open, onOpenChange }: Props) {
     setRevoking('all');
     try {
       await revokeAllSessions();
-      goToLogin();
+      logoutToLogin('logout');
     } catch (caught) {
       toast.error(apiErrorMessage(caught));
       setRevoking(null);
