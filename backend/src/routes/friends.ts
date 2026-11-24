@@ -12,6 +12,10 @@ const friendRequestLimiter = createRateLimiter(10, 60 * 60_000);
 const friendMutationLimiter = createRateLimiter(60, 60_000);
 const friendRequestResponse = 'If that user exists, a friend request has been sent';
 
+const isUniqueConstraintError = (error: unknown): boolean => {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+};
+
 const isValidUsername = (value: unknown): value is string => {
   return typeof value === 'string' && value.length >= 3 && value.length <= 31 && /^[a-z0-9_-]+$/.test(value);
 };
@@ -68,13 +72,17 @@ app.post('/sendRequest', async (c) => {
     return c.text(friendRequestResponse, 202);
   }
 
-  await prisma.friendRequest.create({
-    data: {
-      id: generateId(),
-      senderId: c.get('user')!.id,
-      receiverId: targetUser.id,
-    },
-  });
+  try {
+    await prisma.friendRequest.create({
+      data: {
+        id: generateId(),
+        senderId: c.get('user')!.id,
+        receiverId: targetUser.id,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+  }
 
   return c.text(friendRequestResponse, 202);
 });
@@ -107,18 +115,35 @@ app.post('/respondToRequest', async (c) => {
     return c.text('Friend request not found', 404);
   }
 
+  const receiverId = c.get('user')!.id;
+
   if (!accepted) {
-    await prisma.friendRequest.delete({
-      where: { id: requestId },
+    const { count } = await prisma.friendRequest.deleteMany({
+      where: { id: requestId, receiverId },
     });
+
+    if (count === 0) {
+      return c.text('Friend request not found', 404);
+    }
 
     return c.text('Friend request responded to', 200);
   }
 
-  const pair = friendPair(friendRequest.senderId, friendRequest.receiverId);
-  const dmKey = directChannelKey(friendRequest.senderId, friendRequest.receiverId);
+  const { senderId } = friendRequest;
+  const pair = friendPair(senderId, receiverId);
+  const dmKey = directChannelKey(senderId, receiverId);
 
-  await prisma.$transaction(async (tx) => {
+  const handled = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.friendRequest.deleteMany({
+      where: { id: requestId, receiverId },
+    });
+
+    if (count === 0) return false;
+
+    await tx.friendRequest.deleteMany({
+      where: { senderId: receiverId, receiverId: senderId },
+    });
+
     const channel = await tx.channel.upsert({
       where: { dmKey },
       create: {
@@ -134,12 +159,12 @@ app.post('/respondToRequest', async (c) => {
         {
           id: generateId(),
           channelId: channel.id,
-          userId: friendRequest.senderId,
+          userId: senderId,
         },
         {
           id: generateId(),
           channelId: channel.id,
-          userId: friendRequest.receiverId,
+          userId: receiverId,
         },
       ],
       skipDuplicates: true,
@@ -154,10 +179,12 @@ app.post('/respondToRequest', async (c) => {
       update: {},
     });
 
-    await tx.friendRequest.delete({
-      where: { id: requestId },
-    });
+    return true;
   });
+
+  if (!handled) {
+    return c.text('Friend request not found', 404);
+  }
 
   return c.text('Friend request responded to', 200);
 });
@@ -177,17 +204,13 @@ app.post('/cancelRequest', async (c) => {
     return c.text('Invalid request id', 400);
   }
 
-  const friendRequest = await prisma.friendRequest.findUnique({
-    where: { id: requestId },
+  const { count } = await prisma.friendRequest.deleteMany({
+    where: { id: requestId, senderId: c.get('user')!.id },
   });
 
-  if (!friendRequest || friendRequest.senderId !== c.get('user')!.id) {
+  if (count === 0) {
     return c.text('Friend request not found', 404);
   }
-
-  await prisma.friendRequest.delete({
-    where: { id: requestId },
-  });
 
   return c.text('Friend request canceled', 200);
 });
