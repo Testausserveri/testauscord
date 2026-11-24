@@ -2,6 +2,7 @@ export type UserRef = {
   id: string;
   username: string;
   displayName: string | null;
+  avatarVersion: number | null;
 };
 
 export type ProfileDTO = UserRef & {
@@ -12,6 +13,7 @@ export type ProfilePatch = {
   username?: string;
   displayName?: string | null;
   bio?: string | null;
+  avatar?: string | null;
 };
 
 export type CurrentUser = ProfileDTO;

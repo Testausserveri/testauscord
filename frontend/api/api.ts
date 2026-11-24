@@ -18,6 +18,8 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
+export const avatarUrl = (userId: string, version: number) => `${API_URL}/users/${encodeURIComponent(userId)}/avatar?v=${version}`;
+
 // Drop cached private data and send to the login on expired/revoked session
 axios.interceptors.response.use(undefined, (error: AxiosError) => {
   if (error.response?.status === 401) {

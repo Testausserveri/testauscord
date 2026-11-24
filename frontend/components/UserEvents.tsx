@@ -18,10 +18,10 @@ const patchMessageSenders = (data: InfiniteData<MessagesPage> | undefined, user:
     let pageChanged = false;
     const messages = page.messages.map((message) => {
       if (message.sender.id !== user.id) return message;
-      if (message.sender.username === user.username && message.sender.displayName === user.displayName) return message;
+      if (message.sender.username === user.username && message.sender.displayName === user.displayName && message.sender.avatarVersion === user.avatarVersion) return message;
 
       pageChanged = true;
-      return { ...message, sender: { ...message.sender, username: user.username, displayName: user.displayName } };
+      return { ...message, sender: { ...message.sender, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion } };
     });
 
     if (!pageChanged) return page;
@@ -44,7 +44,9 @@ export function UserEvents() {
         const user = (frame.data as { user?: UserRef } | undefined)?.user;
         if (!user || typeof user.id !== 'string') return;
 
-        queryClient.setQueryData<CurrentUser>(['user'], (current) => (current?.id === user.id ? { ...current, username: user.username, displayName: user.displayName } : current));
+        queryClient.setQueryData<CurrentUser>(['user'], (current) =>
+          current?.id === user.id ? { ...current, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion } : current,
+        );
         queryClient.setQueriesData<InfiniteData<MessagesPage>>({ queryKey: ['messages'] }, (data) => patchMessageSenders(data, user));
         void queryClient.invalidateQueries({ queryKey: ['friends'] });
         void queryClient.invalidateQueries({ queryKey: ['profile', user.id] });

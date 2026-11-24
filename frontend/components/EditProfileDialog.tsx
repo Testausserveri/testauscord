@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import type { SubmitEvent } from 'react';
+import { useRef, useState } from 'react';
+import type { ChangeEvent, SubmitEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getUser, updateProfile } from '@/api/api';
@@ -17,10 +17,53 @@ import { UserAvatar } from './UserAvatar';
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
 const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/;
+const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
+const MAX_AVATAR_BYTES = 128 * 1024;
+const AVATAR_SIZE = 256;
 
 const isValidUsername = (value: string) => value.length >= 3 && value.length <= 31 && USERNAME_PATTERN.test(value);
 
 const hasUnsafeChars = (value: string) => CONTROL_CHARS.test(value) || BIDI_CONTROLS.test(value);
+
+const dataUrlBytes = (value: string) => Math.floor(((value.length - value.indexOf(',') - 1) * 3) / 4);
+
+const encodeAvatar = async (file: File): Promise<string> => {
+  if (file.size > MAX_SOURCE_BYTES) throw new Error('Images must be 5 MB or smaller');
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('That file is not a supported image');
+  }
+
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = AVATAR_SIZE;
+  canvas.height = AVATAR_SIZE;
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    bitmap.close();
+    throw new Error('Could not process that image');
+  }
+
+  context.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+  bitmap.close();
+
+  for (const [type, quality] of [
+    ['image/webp', 0.85],
+    ['image/webp', 0.7],
+    ['image/webp', 0.5],
+    ['image/jpeg', 0.85],
+  ] as const) {
+    const dataUrl = canvas.toDataURL(type, quality);
+    if (!dataUrl.startsWith(`data:${type}`)) continue;
+    if (dataUrlBytes(dataUrl) <= MAX_AVATAR_BYTES) return dataUrl;
+  }
+
+  throw new Error('Could not shrink that image below 128 KB');
+};
 
 export function EditProfileDialog({ onClose }: { onClose: () => void }) {
   const { data: user } = useQuery<CurrentUser>({
@@ -36,13 +79,17 @@ export function EditProfileDialog({ onClose }: { onClose: () => void }) {
 
 function EditProfileForm({ user, onClose }: { user: CurrentUser; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const fileInput = useRef<HTMLInputElement>(null);
   const [username, setUsername] = useState(user.username);
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [bio, setBio] = useState(user.bio ?? '');
+  const [avatar, setAvatar] = useState<{ dataUrl: string | null; removed: boolean }>({ dataUrl: null, removed: false });
   const [usernameSettled, setUsernameSettled] = useSettled(username);
   const [displayNameSettled, setDisplayNameSettled] = useSettled(displayName);
   const [bioSettled, setBioSettled] = useSettled(bio);
   const [busy, setBusy] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const nextDisplayName = displayName.trim();
@@ -56,14 +103,42 @@ function EditProfileForm({ user, onClose }: { user: CurrentUser; onClose: () => 
   const showDisplayNameError = displayNameSettled && nextDisplayName.length > 0 && !displayNameValid;
   const showBioError = bioSettled && nextBio.length > 0 && !bioValid;
 
+  const hasAvatar = avatar.dataUrl !== null || (!avatar.removed && user.avatarVersion != null);
+  const previewUser = { id: user.id, username, displayName: nextDisplayName || null, avatarVersion: avatar.dataUrl !== null || avatar.removed ? null : user.avatarVersion };
+
   const patch: ProfilePatch = {};
 
   if (username !== user.username) patch.username = username;
   if (nextDisplayName !== (user.displayName ?? '')) patch.displayName = nextDisplayName || null;
   if ((nextBio || null) !== user.bio) patch.bio = nextBio || null;
+  if (avatar.dataUrl !== null) patch.avatar = avatar.dataUrl;
+  else if (avatar.removed && user.avatarVersion != null) patch.avatar = null;
 
   const changed = Object.keys(patch).length > 0;
-  const canSave = !busy && changed && usernameValid && displayNameValid && bioValid;
+  const canSave = !busy && !processing && changed && usernameValid && displayNameValid && bioValid;
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setProcessing(true);
+    setAvatarError(null);
+
+    try {
+      const dataUrl = await encodeAvatar(file);
+      setAvatar({ dataUrl, removed: false });
+    } catch (caught) {
+      setAvatarError(caught instanceof Error ? caught.message : 'Could not process that image');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleAvatarRemove = () => {
+    setAvatar({ dataUrl: null, removed: user.avatarVersion != null });
+    setAvatarError(null);
+  };
 
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -94,12 +169,25 @@ function EditProfileForm({ user, onClose }: { user: CurrentUser; onClose: () => 
           </DialogHeader>
 
           <div className="flex items-center gap-3 rounded-md border p-3">
-            <UserAvatar user={{ id: user.id, username, displayName: nextDisplayName || null }} className="h-12 w-12" />
-            <div className="min-w-0">
+            <UserAvatar user={previewUser} src={avatar.dataUrl ?? undefined} className="h-12 w-12" />
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{nextDisplayName || username || 'Your name'}</p>
               <p className="truncate text-xs text-muted-foreground">@{username || 'username'}</p>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {hasAvatar && (
+                <Button type="button" variant="ghost" size="sm" onClick={handleAvatarRemove} disabled={busy || processing}>
+                  Remove
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={busy || processing}>
+                {processing ? 'Processing...' : hasAvatar ? 'Change' : 'Upload'}
+              </Button>
+              <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            </div>
           </div>
+
+          {avatarError && <p className="text-sm text-destructive">{avatarError}</p>}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="profile-username">Username</Label>
