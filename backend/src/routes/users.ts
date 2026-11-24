@@ -2,26 +2,11 @@ import { Hono } from 'hono';
 import type { Variables } from '../types/types';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
-import { friendPair } from '../services/directMessages';
+import { canViewUser } from '../services/profiles';
 import { createRateLimiter } from '../utils/rateLimit';
 
 const app = new Hono<{ Variables: Variables }>();
 const userLookupLimiter = createRateLimiter(60, 60_000);
-
-const canViewUser = async (viewerId: string, targetId: string): Promise<boolean> => {
-  const [friendship, sharedServer] = await Promise.all([
-    prisma.friendship.findUnique({
-      where: { userAId_userBId: friendPair(viewerId, targetId) },
-      select: { id: true },
-    }),
-    prisma.serverMember.findFirst({
-      where: { userId: viewerId, server: { members: { some: { userId: targetId } } } },
-      select: { id: true },
-    }),
-  ]);
-
-  return Boolean(friendship || sharedServer);
-};
 
 app.get('/users/:id', async (c) => {
   if (!c.get('user') || !c.get('session')) {

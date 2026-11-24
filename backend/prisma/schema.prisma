@@ -21,6 +21,8 @@ enum MessageFormat {
 model User {
   id String @id
   username String @unique
+  displayName String?
+  bio String?
   password String
   sessions Session[]
 
