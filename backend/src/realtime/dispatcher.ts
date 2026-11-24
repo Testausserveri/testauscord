@@ -1,6 +1,6 @@
 import { eventBus, type DomainEvent } from './bus';
 import { publishToChannel, publishToUser } from './connections';
-import { messageCreateFrame, serverMemberRemovedFrame, serverUpdatedFrame } from './protocol';
+import { messageCreateFrame, serverMemberRemovedFrame, serverUpdatedFrame, userUpdatedFrame } from './protocol';
 
 const dispatch = (event: DomainEvent): void => {
   if (event.type === 'MESSAGE_CREATE') {
@@ -9,6 +9,10 @@ const dispatch = (event: DomainEvent): void => {
     publishToUser(event.userId, JSON.stringify(serverMemberRemovedFrame(event.serverId)));
   } else if (event.type === 'SERVER_UPDATED') {
     const payload = JSON.stringify(serverUpdatedFrame(event.server));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'USER_UPDATED') {
+    const payload = JSON.stringify(userUpdatedFrame(event.user));
 
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   }

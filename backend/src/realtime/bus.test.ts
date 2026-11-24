@@ -66,3 +66,17 @@ test('publishes server updates with their recipients', () => {
 
   expect(seen).toEqual([['user-1', 'user-2']]);
 });
+
+test('publishes user updates with their recipients', () => {
+  const bus = createLocalBus();
+  const seen: string[][] = [];
+  const stop = bus.subscribe((event) => {
+    if (event.type === 'USER_UPDATED') seen.push(event.recipientIds);
+  });
+
+  bus.publish({ type: 'USER_UPDATED', user: { id: 'user-1', username: 'alice', displayName: 'Alice' }, recipientIds: ['user-1', 'user-2'] });
+
+  stop();
+
+  expect(seen).toEqual([['user-1', 'user-2']]);
+});

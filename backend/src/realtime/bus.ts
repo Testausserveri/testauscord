@@ -1,4 +1,4 @@
-import type { MessageDTO } from './protocol';
+import type { MessageDTO, UserRef } from './protocol';
 
 export type DomainEvent =
   | {
@@ -14,6 +14,11 @@ export type DomainEvent =
   | {
       type: 'SERVER_UPDATED';
       server: { id: string; name: string };
+      recipientIds: string[];
+    }
+  | {
+      type: 'USER_UPDATED';
+      user: UserRef;
       recipientIds: string[];
     };
 

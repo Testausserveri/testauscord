@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
 type Row = { id: string; username: string; displayName: string | null; bio: string | null };
@@ -9,11 +10,13 @@ let friendship: { id: string } | null = null;
 let sharedServer: { id: string } | null = null;
 let pendingRequest: { id: string } | null = null;
 let takenUsername: string | null = null;
+let friendships: { userAId: string; userBId: string }[] = [];
 
 const findUser = mock(async ({ where }: { where: { id: string } }) => users[where.id] ?? null);
 const findFriendship = mock(async () => friendship);
 const findServerMember = mock(async () => sharedServer);
 const findFriendRequest = mock(async () => pendingRequest);
+const findFriendships = mock(async () => friendships);
 const updateUser = mock(async ({ where, data }: { where: { id: string }; data: Partial<Pick<Row, 'username' | 'displayName' | 'bio'>> }) => {
   if (takenUsername !== null && data.username === takenUsername) {
     throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
@@ -27,7 +30,7 @@ const updateUser = mock(async ({ where, data }: { where: { id: string }; data: P
 mock.module('../db', () => ({
   prisma: {
     user: { findUnique: findUser, update: updateUser },
-    friendship: { findUnique: findFriendship },
+    friendship: { findUnique: findFriendship, findMany: findFriendships },
     serverMember: { findFirst: findServerMember },
     friendRequest: { findFirst: findFriendRequest },
   },
@@ -68,6 +71,15 @@ const patchProfile = (target: Hono<{ Variables: Variables }>, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const captureUserUpdates = () => {
+  const events: Extract<DomainEvent, { type: 'USER_UPDATED' }>[] = [];
+  const stop = eventBus.subscribe((event) => {
+    if (event.type === 'USER_UPDATED') events.push(event);
+  });
+
+  return { events, stop };
+};
+
 const profile = (id: string): Row => ({
   id,
   username: id,
@@ -90,6 +102,7 @@ beforeEach(() => {
   sharedServer = null;
   pendingRequest = null;
   takenUsername = null;
+  friendships = [];
 });
 
 afterAll(() => mock.restore());
@@ -233,4 +246,43 @@ test('throttles username changes separately from other writes', async () => {
 
   const bio = await patchProfile(nameThrottleApp, { bio: 'still allowed' });
   expect(bio.status).toBe(200);
+});
+
+test('publishes USER_UPDATED to the user and their friends', async () => {
+  friendships = [
+    { userAId: 'writer', userBId: 'friend' },
+    { userAId: 'stranger', userBId: 'writer' },
+  ];
+
+  const { events, stop } = captureUserUpdates();
+
+  try {
+    const response = await patchProfile(writerApp, { displayName: 'Alice' });
+
+    expect(response.status).toBe(200);
+    expect(events).toEqual([
+      {
+        type: 'USER_UPDATED',
+        user: { id: 'writer', username: 'writer', displayName: 'Alice' },
+        recipientIds: ['writer', 'friend', 'stranger'],
+      },
+    ]);
+  } finally {
+    stop();
+  }
+});
+
+test('skips USER_UPDATED above the 500 recipient cap', async () => {
+  friendships = Array.from({ length: 500 }, (_, index) => ({ userAId: 'writer', userBId: `friend-${index}` }));
+
+  const { events, stop } = captureUserUpdates();
+
+  try {
+    const response = await patchProfile(writerApp, { displayName: 'Alice' });
+
+    expect(response.status).toBe(200);
+    expect(events).toEqual([]);
+  } finally {
+    stop();
+  }
 });

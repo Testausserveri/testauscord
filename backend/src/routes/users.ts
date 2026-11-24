@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Variables } from '../types/types';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
+import { eventBus } from '../realtime/bus';
 import { canViewUser, type ProfileDTO } from '../services/profiles';
 import { createRateLimiter } from '../utils/rateLimit';
 import { containsBidiControls, containsControlChars, isValidUsername } from '../utils/validation';
@@ -11,6 +12,7 @@ const app = new Hono<{ Variables: Variables }>();
 const userLookupLimiter = createRateLimiter(60, 60_000);
 const profileWriteLimiter = createRateLimiter(30, 60 * 60_000);
 const usernameChangeLimiter = createRateLimiter(10, 60 * 60_000);
+const MAX_PROFILE_EVENT_RECIPIENTS = 500;
 
 const profilePatchSchema = z
   .object({
@@ -94,6 +96,25 @@ app.patch('/users/@me', async (c) => {
       data,
       select: { id: true, username: true, displayName: true, bio: true },
     });
+
+    const friendships = await prisma.friendship.findMany({
+      where: { OR: [{ userAId: viewerId }, { userBId: viewerId }] },
+      select: { userAId: true, userBId: true },
+    });
+
+    const recipientIds = new Set<string>([viewerId]);
+
+    for (const friendship of friendships) {
+      recipientIds.add(friendship.userAId === viewerId ? friendship.userBId : friendship.userAId);
+    }
+
+    if (recipientIds.size <= MAX_PROFILE_EVENT_RECIPIENTS) {
+      eventBus.publish({
+        type: 'USER_UPDATED',
+        user: { id: user.id, username: user.username, displayName: user.displayName },
+        recipientIds: [...recipientIds],
+      });
+    }
 
     return c.json(user, 200);
   } catch (error) {

@@ -10,6 +10,7 @@ import { SidebarToggle } from '@/components/SidebarToggle';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { ServerMembershipEvents } from '@/components/ServerMembershipEvents';
+import { UserEvents } from '@/components/UserEvents';
 import { getServerRoute } from '@/lib/serverRoutes';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <WebSocketProvider>
       <ServerMembershipEvents />
+      <UserEvents />
       <SidebarProvider>
         <div className="flex h-screen w-full">
           <ServerRail />
