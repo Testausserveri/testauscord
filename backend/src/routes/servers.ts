@@ -5,7 +5,7 @@ import { prisma } from '../db';
 import type { Prisma } from '../generated/prisma/client';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
-import { unsubscribeUserFromChannel } from '../realtime/connections';
+import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
 import { planCategoryDelete, planChannelAssign, nextPosition } from '../services/serverLayout';
@@ -51,7 +51,12 @@ const findManageableServer = (serverId: string, userId: string) =>
 const findServerChannels = (serverId: string) => prisma.channel.findMany({ where: { serverId }, select: { id: true } });
 
 const evictServerMember = (serverId: string, userId: string, channels: { id: string }[]) => {
-  for (const channel of channels) unsubscribeUserFromChannel(userId, channel.id);
+  try {
+    for (const channel of channels) unsubscribeUserFromChannel(userId, channel.id);
+  } catch (error) {
+    closeUserConnectionsSilently(userId);
+    console.error(`Failed to unsubscribe ${userId} from server ${serverId}`, error);
+  }
 
   eventBus.publish({ type: 'SERVER_MEMBER_REMOVED', serverId, userId });
 };

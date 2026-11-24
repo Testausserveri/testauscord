@@ -6,6 +6,7 @@ import {
   checkFrameBudget,
   closeSessionConnections,
   closeUserConnections,
+  closeUserConnectionsSilently,
   markAlive,
   openConnection,
   publishToChannel,
@@ -177,6 +178,31 @@ test('closes every connection for a user', () => {
   expect(JSON.parse(a2.sent[0]!).type).toBe('SESSION_REVOKED');
   expect(b.closed).toEqual([]);
   expect(b.sent).toEqual([]);
+
+  removeConnection(b.ws);
+});
+
+test('closes user connections for a reconnect without revoking the session', () => {
+  const a1 = createSocket();
+  const a2 = createSocket();
+  const b = createSocket();
+  const channelId = crypto.randomUUID();
+
+  addConnection(a1.ws, 'user-silent', 'session-a1', Date.now() + 60_000);
+  addConnection(a2.ws, 'user-silent', 'session-a2', Date.now() + 60_000);
+  addConnection(b.ws, 'user-watcher', 'session-b', Date.now() + 60_000);
+  subscribe(a1.ws, channelId);
+  subscribe(a2.ws, channelId);
+  subscribe(b.ws, channelId);
+
+  closeUserConnectionsSilently('user-silent');
+  publishToChannel(channelId, 'event');
+
+  expect(a1.closed).toEqual([1012]);
+  expect(a2.closed).toEqual([1012]);
+  expect(a1.sent).toEqual([]);
+  expect(a2.sent).toEqual([]);
+  expect(b.sent).toEqual(['event']);
 
   removeConnection(b.ws);
 });

@@ -242,6 +242,16 @@ export const closeUserConnections = (userId: string): void => {
   }
 };
 
+// 1012 asks the client to reconnect without treating the session as revoked
+export const closeUserConnectionsSilently = (userId: string): void => {
+  for (const connection of [...connections.values()]) {
+    if (connection.userId !== userId) continue;
+
+    connection.ws.close(1012, 'Reconnect');
+    removeConnection(connection.ws);
+  }
+};
+
 export const publishToChannel = (channelId: string, payload: string, now = Date.now()): void => {
   const subscribers = channelConnections.get(channelId);
   if (!subscribers) return;

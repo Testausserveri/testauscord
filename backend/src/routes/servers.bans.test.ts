@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
+import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
+import { addConnection, publishToChannel, removeConnection, subscribe } from '../realtime/connections';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
@@ -192,6 +194,22 @@ const put = (app: Hono<{ Variables: Variables }>, path: string, body: unknown = 
 const del = (app: Hono<{ Variables: Variables }>, path: string) => app.request(`/servers${path}`, { method: 'DELETE' });
 const get = (app: Hono<{ Variables: Variables }>, path: string) => app.request(`/servers${path}`);
 
+const createSocket = () => {
+  const sent: string[] = [];
+  const socket = {
+    readyState: WebSocket.OPEN as number,
+    send: (payload: string) => {
+      sent.push(payload);
+      return payload.length;
+    },
+    close: () => {
+      socket.readyState = WebSocket.CLOSED;
+    },
+  };
+
+  return { ws: socket as unknown as ServerWebSocket, sent };
+};
+
 const seedServer = (suffix: string) => {
   const ownerId = `owner-${suffix}`;
   const memberId = `member-${suffix}`;
@@ -318,6 +336,28 @@ test('bans a member and removes the membership and their invites', async () => {
   expect(bans).toEqual([expect.objectContaining({ serverId, userId: memberId, bannedById: ownerId, reason: 'spam' })]);
   expect(invites.map((invite) => invite.code)).toEqual(['code-ban-member']);
   expect(events).toEqual([{ type: 'SERVER_MEMBER_REMOVED', serverId, userId: memberId }]);
+});
+
+test('drops a banned member from every server channel', async () => {
+  const { serverId, ownerId, memberId } = seedServer('ban-realtime');
+  const channelId = 'channel-ban-realtime';
+  const banned = createSocket();
+  const watcher = createSocket();
+
+  addConnection(banned.ws, memberId, 'session-banned', Date.now() + 60_000);
+  addConnection(watcher.ws, ownerId, 'session-watcher', Date.now() + 60_000);
+  subscribe(banned.ws, channelId);
+  subscribe(watcher.ws, channelId);
+
+  const response = await put(createApp(ownerId), `/${serverId}/bans/${memberId}`, {});
+  publishToChannel(channelId, 'message');
+
+  expect(response.status).toBe(204);
+  expect(banned.sent).toEqual([]);
+  expect(watcher.sent).toEqual(['message']);
+
+  removeConnection(banned.ws);
+  removeConnection(watcher.ws);
 });
 
 test('replaces an existing ban on a duplicate PUT', async () => {
