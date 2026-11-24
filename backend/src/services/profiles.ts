@@ -1,5 +1,15 @@
 import { prisma } from '../db';
+import type { UserRef } from '../realtime/protocol';
 import { friendPair } from './directMessages';
+
+export type ProfileDTO = UserRef & { bio: string | null };
+
+export const getUserRef = async (userId: string): Promise<UserRef | null> => {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, username: true, displayName: true },
+  });
+};
 
 export const canViewUser = async (viewerId: string, targetId: string): Promise<boolean> => {
   if (viewerId === targetId) return true;

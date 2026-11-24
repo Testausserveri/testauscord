@@ -173,7 +173,7 @@ app.get('/:id', async (c) => {
       members: {
         select: {
           joinedAt: true,
-          user: { select: { id: true, username: true } },
+          user: { select: { id: true, username: true, displayName: true } },
         },
         orderBy: { joinedAt: 'asc' },
       },
@@ -190,6 +190,7 @@ app.get('/:id', async (c) => {
       members: server.members.map((member) => ({
         id: member.user.id,
         username: member.user.username,
+        displayName: member.user.displayName,
         joinedAt: member.joinedAt,
       })),
     },
@@ -328,7 +329,7 @@ app.get('/:id/invites', async (c) => {
       code: true,
       createdAt: true,
       expiresAt: true,
-      createdBy: { select: { id: true, username: true } },
+      createdBy: { select: { id: true, username: true, displayName: true } },
     },
     orderBy: { createdAt: 'desc' },
   });

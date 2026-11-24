@@ -1,7 +1,14 @@
-export type CurrentUser = {
+export type UserRef = {
   id: string;
   username: string;
+  displayName: string | null;
 };
+
+export type ProfileDTO = UserRef & {
+  bio: string | null;
+};
+
+export type CurrentUser = ProfileDTO;
 
 export type AccountSession = {
   id: string;
@@ -16,16 +23,10 @@ export type ServerAction = 'invite' | 'invites' | 'members' | 'leave' | 'setting
 export type Friend = {
   id: string;
   friendsSince: string;
-  friend: {
-    id: string;
-    username: string;
-  };
+  friend: UserRef;
 };
 
-type MessageSender = {
-  id: string;
-  username: string;
-};
+type MessageSender = UserRef;
 
 export type Message = {
   id: string;
@@ -50,19 +51,14 @@ export type Server = {
 };
 
 export type ServerDetail = Server & {
-  members: {
-    id: string;
-    username: string;
+  members: (UserRef & {
     joinedAt: string;
-  }[];
+  })[];
 };
 
 export type ServerInvite = {
   code: string;
   createdAt: string;
   expiresAt: string;
-  createdBy: {
-    id: string;
-    username: string;
-  };
+  createdBy: UserRef;
 };

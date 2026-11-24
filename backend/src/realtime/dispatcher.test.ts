@@ -21,7 +21,7 @@ test('dispatches message events to channel subscribers', () => {
     channelId,
     content: 'hello',
     format: 'TEXT',
-    sender: { id: 'user-1', username: 'alice' },
+    sender: { id: 'user-1', username: 'alice', displayName: null },
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 

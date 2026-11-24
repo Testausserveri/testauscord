@@ -271,7 +271,7 @@ test('caps connections per user', () => {
 test('sends READY after the connection is accepted', () => {
   const socket = createSocket();
 
-  openConnection(socket.ws, { id: 'user-ready', username: 'alice' }, 'session-ready', Date.now() + 60_000);
+  openConnection(socket.ws, { id: 'user-ready', username: 'alice', displayName: null }, 'session-ready', Date.now() + 60_000);
 
   expect(socket.closed).toEqual([]);
   expect(JSON.parse(socket.sent[0]!)).toMatchObject({
@@ -291,7 +291,7 @@ test('sends nothing when the connection cap rejects the socket', () => {
   }
 
   const extra = createSocket();
-  openConnection(extra.ws, { id: 'user-ready-cap', username: 'alice' }, 'session-ready-cap-extra', now + 60_000, now);
+  openConnection(extra.ws, { id: 'user-ready-cap', username: 'alice', displayName: null }, 'session-ready-cap-extra', now + 60_000, now);
 
   expect(extra.sent).toEqual([]);
   expect(extra.closed).toEqual([4009]);

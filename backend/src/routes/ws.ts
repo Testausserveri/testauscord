@@ -8,6 +8,7 @@ import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
 import { redeemTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
+import { getUserRef } from '../services/profiles';
 import type { Variables } from '../types/types';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -44,17 +45,24 @@ app.get(
       return c.text('Unauthorized', 401);
     }
 
+    const userRef = await getUserRef(user.id);
+
+    if (!userRef) {
+      return c.text('Unauthorized', 401);
+    }
+
     c.set('user', user);
     c.set('session', session);
+    c.set('userRef', userRef);
     await next();
   },
   upgradeWebSocket(async (c) => {
-    const user = c.get('user')!;
+    const userRef = c.get('userRef')!;
     const session = c.get('session')!;
 
     return {
       onOpen(_, ctx) {
-        openConnection(ctx.raw as ServerWebSocket, user, session.id, session.expiresAt.getTime());
+        openConnection(ctx.raw as ServerWebSocket, userRef, session.id, session.expiresAt.getTime());
       },
 
       async onMessage(event, ctx) {

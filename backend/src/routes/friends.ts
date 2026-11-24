@@ -265,6 +265,7 @@ app.get('/pendingRequests', async (c) => {
         select: {
           id: true,
           username: true,
+          displayName: true,
         },
       },
     },
@@ -289,6 +290,7 @@ app.get('/sentRequests', async (c) => {
         select: {
           id: true,
           username: true,
+          displayName: true,
         },
       },
     },
@@ -315,12 +317,14 @@ app.get('/', async (c) => {
         select: {
           id: true,
           username: true,
+          displayName: true,
         },
       },
       userB: {
         select: {
           id: true,
           username: true,
+          displayName: true,
         },
       },
     },

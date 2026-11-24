@@ -16,7 +16,7 @@ test('publishes to subscribers until they unsubscribe', () => {
       channelId: 'channel-1',
       content: 'hello',
       format: 'TEXT',
-      sender: { id: 'user-1', username: 'alice' },
+      sender: { id: 'user-1', username: 'alice', displayName: null },
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   });
@@ -31,7 +31,7 @@ test('publishes to subscribers until they unsubscribe', () => {
       channelId: 'channel-2',
       content: 'ignored',
       format: 'TEXT',
-      sender: { id: 'user-1', username: 'alice' },
+      sender: { id: 'user-1', username: 'alice', displayName: null },
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   });

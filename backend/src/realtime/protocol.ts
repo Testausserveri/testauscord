@@ -47,6 +47,7 @@ export type ClientFrame = z.infer<typeof clientFrameSchema>;
 export type UserRef = {
   id: string;
   username: string;
+  displayName: string | null;
 };
 
 export type MessageFormat = 'TEXT' | 'E2EE';

@@ -169,7 +169,7 @@ export function ServerActionDialogs({ server, action, onClose }: Props) {
                   <div className="min-w-0">
                     <p className="truncate font-mono text-sm">{entry.code}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {entry.createdBy.username}, expires {new Date(entry.expiresAt).toLocaleDateString()}
+                      {entry.createdBy.displayName ?? entry.createdBy.username}, expires {new Date(entry.expiresAt).toLocaleDateString()}
                     </p>
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={() => handleRevoke(entry.code)} disabled={busy}>
