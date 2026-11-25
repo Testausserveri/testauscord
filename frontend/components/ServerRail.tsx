@@ -128,163 +128,165 @@ export function ServerRail() {
   };
 
   return (
-    <nav style={{ width: SERVER_RAIL_WIDTH }} className="relative z-20 flex shrink-0 flex-col items-center gap-2 border-r border-sidebar-border bg-sidebar py-3">
-      <Link
-        href="/channels/@me"
-        title="Direct Messages"
-        aria-label="Direct Messages"
-        className={`relative flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
-      >
-        <MessageCircle className="h-6 w-6" />
-        {pendingCount > 0 && (
-          <span
-            aria-label={`${pendingCount} pending friend requests`}
-            className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
-          >
-            {pendingCount > 9 ? '9+' : pendingCount}
-          </span>
-        )}
-      </Link>
+    <nav style={{ width: SERVER_RAIL_WIDTH }} className="relative z-20 flex shrink-0 flex-col items-center gap-2 overflow-hidden border-r border-sidebar-border bg-sidebar py-3">
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <Link
+          href="/channels/@me"
+          title="Direct Messages"
+          aria-label="Direct Messages"
+          className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
+        >
+          <MessageCircle className="h-6 w-6" />
+          {pendingCount > 0 && (
+            <span
+              aria-label={`${pendingCount} pending friend requests`}
+              className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+            >
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
+          )}
+        </Link>
 
-      <div className="h-px w-8 bg-sidebar-border" />
+        <div className="h-px w-8 shrink-0 bg-sidebar-border" />
 
-      {servers?.map((server: Server) => {
-        const channel = firstChannel(server);
-        const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
+        {servers?.map((server: Server) => {
+          const channel = firstChannel(server);
+          const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
 
-        return (
-          <ContextMenu key={server.id}>
-            <ContextMenuTrigger asChild>
-              <Link
-                href={href}
-                title={server.name}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route?.serverId === server.id ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
-              >
-                {initials(server.name)}
-              </Link>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-56">
-              <ContextMenuItem
-                onSelect={() => {
-                  setActionServer(server);
-                  setAction('members');
-                }}
-              >
-                <Users />
-                Members
-              </ContextMenuItem>
-              <ContextMenuItem
-                onSelect={() => {
-                  setActionServer(server);
-                  setAction('invite');
-                }}
-              >
-                <UserPlus />
-                Invite people
-              </ContextMenuItem>
-              {user?.id === server.ownerId && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onSelect={() => {
-                      setActionServer(server);
-                      setAction('invites');
-                    }}
-                  >
-                    <Ticket />
-                    Active invites
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() => {
-                      setActionServer(server);
-                      setAction('bans');
-                    }}
-                  >
-                    <Ban />
-                    Banned users
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() => {
-                      setActionServer(server);
-                      setAction('settings');
-                    }}
-                  >
-                    <Settings />
-                    Server settings
-                  </ContextMenuItem>
-                </>
-              )}
-              {user && user.id !== server.ownerId && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    variant="destructive"
-                    onSelect={() => {
-                      setActionServer(server);
-                      setAction('leave');
-                    }}
-                  >
-                    <LogOut />
-                    Leave server
-                  </ContextMenuItem>
-                </>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        );
-      })}
+          return (
+            <ContextMenu key={server.id}>
+              <ContextMenuTrigger asChild>
+                <Link
+                  href={href}
+                  title={server.name}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route?.serverId === server.id ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
+                >
+                  {initials(server.name)}
+                </Link>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-56">
+                <ContextMenuItem
+                  onSelect={() => {
+                    setActionServer(server);
+                    setAction('members');
+                  }}
+                >
+                  <Users />
+                  Members
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onSelect={() => {
+                    setActionServer(server);
+                    setAction('invite');
+                  }}
+                >
+                  <UserPlus />
+                  Invite people
+                </ContextMenuItem>
+                {user?.id === server.ownerId && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      onSelect={() => {
+                        setActionServer(server);
+                        setAction('invites');
+                      }}
+                    >
+                      <Ticket />
+                      Active invites
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        setActionServer(server);
+                        setAction('bans');
+                      }}
+                    >
+                      <Ban />
+                      Banned users
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        setActionServer(server);
+                        setAction('settings');
+                      }}
+                    >
+                      <Settings />
+                      Server settings
+                    </ContextMenuItem>
+                  </>
+                )}
+                {user && user.id !== server.ownerId && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      variant="destructive"
+                      onSelect={() => {
+                        setActionServer(server);
+                        setAction('leave');
+                      }}
+                    >
+                      <LogOut />
+                      Leave server
+                    </ContextMenuItem>
+                  </>
+                )}
+              </ContextMenuContent>
+            </ContextMenu>
+          );
+        })}
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            title="Add a server"
-            aria-label="Add a server"
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
-          >
-            <Plus className="h-6 w-6" />
-          </button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Add a server</SheetTitle>
-            <SheetDescription>Create your own space or join one with an invite code.</SheetDescription>
-          </SheetHeader>
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              title="Add a server"
+              aria-label="Add a server"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Add a server</SheetTitle>
+              <SheetDescription>Create your own space or join one with an invite code.</SheetDescription>
+            </SheetHeader>
 
-          <div className="flex flex-col gap-6 px-4 pb-4">
-            <form onSubmit={handleCreate} className="flex flex-col gap-2">
-              <Label htmlFor="server-name">Create a server</Label>
-              <Input id="server-name" value={serverName} onChange={(event) => setServerName(event.target.value)} placeholder="My server" maxLength={100} disabled={busy} />
-              <Button type="submit" disabled={!serverName.trim() || busy}>
-                Create server
-              </Button>
-            </form>
+            <div className="flex flex-col gap-6 px-4 pb-4">
+              <form onSubmit={handleCreate} className="flex flex-col gap-2">
+                <Label htmlFor="server-name">Create a server</Label>
+                <Input id="server-name" value={serverName} onChange={(event) => setServerName(event.target.value)} placeholder="My server" maxLength={100} disabled={busy} />
+                <Button type="submit" disabled={!serverName.trim() || busy}>
+                  Create server
+                </Button>
+              </form>
 
-            <div className="flex items-center gap-2">
-              <Separator className="flex-1" />
-              <span className="text-xs text-muted-foreground">OR</span>
-              <Separator className="flex-1" />
+              <div className="flex items-center gap-2">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">OR</span>
+                <Separator className="flex-1" />
+              </div>
+
+              <form onSubmit={handleJoin} className="flex flex-col gap-2">
+                <Label htmlFor="invite-code">Join with an invite code</Label>
+                <Input id="invite-code" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Invite code" maxLength={64} disabled={busy} />
+                <Button type="submit" variant="secondary" disabled={!inviteCode.trim() || busy}>
+                  Join server
+                </Button>
+              </form>
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
-
-            <form onSubmit={handleJoin} className="flex flex-col gap-2">
-              <Label htmlFor="invite-code">Join with an invite code</Label>
-              <Input id="invite-code" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Invite code" maxLength={64} disabled={busy} />
-              <Button type="submit" variant="secondary" disabled={!inviteCode.trim() || busy}>
-                Join server
-              </Button>
-            </form>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
-        </SheetContent>
-      </Sheet>
+          </SheetContent>
+        </Sheet>
+      </div>
 
       <button
         type="button"
         onClick={() => setSettingsOpen(true)}
         title="Account settings"
         aria-label="Account settings"
-        className="mt-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
       >
         <Settings className="h-5 w-5" />
       </button>
@@ -294,7 +296,7 @@ export function ServerRail() {
         onClick={() => setLogoutOpen(true)}
         title="Log out"
         aria-label="Log out"
-        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
       >
         <LogOut className="h-5 w-5" />
       </button>
