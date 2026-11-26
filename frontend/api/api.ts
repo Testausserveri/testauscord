@@ -14,6 +14,7 @@ import type {
   ServerChannel,
   ServerDetail,
   ServerInvite,
+  ServerLayoutPayload,
 } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -155,6 +156,10 @@ export const createChannel = async (serverId: string, name: string, categoryId?:
 
 export const updateChannelCategory = async (serverId: string, channelId: string, categoryId: string | null): Promise<ServerChannel> => {
   return await axios.patch(`${API_URL}/servers/${serverId}/channels/${channelId}`, { categoryId }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updateServerLayout = async (serverId: string, payload: ServerLayoutPayload) => {
+  await axios.put(`${API_URL}/servers/${serverId}/layout`, payload, { withCredentials: true });
 };
 
 export const createCategory = async (serverId: string, name: string): Promise<ServerCategory> => {

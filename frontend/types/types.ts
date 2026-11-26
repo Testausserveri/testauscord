@@ -85,6 +85,16 @@ export type ServerDetail = Server & {
   })[];
 };
 
+export type ServerLayoutGroup = {
+  categoryId: string | null;
+  channelIds: string[];
+};
+
+export type ServerLayoutPayload = {
+  categories: string[];
+  groups: ServerLayoutGroup[];
+};
+
 export type ServerInvite = {
   code: string;
   createdAt: string;

@@ -1,18 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import type { SubmitEvent } from 'react';
+import { useRef, useState } from 'react';
+import type { ReactNode, SubmitEvent } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners, pointerWithin, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Ban, ChevronDown, FolderPlus, Hash, LogOut, MoreHorizontal, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCategory, createChannel, deleteCategory, getServers, getUser, updateCategory, updateChannelCategory } from '@/api/api';
+import { createCategory, createChannel, deleteCategory, getServers, getUser, updateCategory, updateChannelCategory, updateServerLayout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
-import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel } from '@/types/types';
+import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel, ServerDetail, ServerLayoutGroup } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
+import { groupServer, moveCategory, moveChannel, toLayoutPayload } from '@/lib/serverLayout';
 import { Button } from '@/components/ui/button';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -51,6 +57,151 @@ const readCollapsed = (serverId: string): Record<string, boolean> => {
   }
 };
 
+const orderGroups = (groups: ServerLayoutGroup[], categories: ServerCategory[]) => {
+  const byCategory = new Map(groups.map((group) => [group.categoryId, group]));
+  return [byCategory.get(null), ...categories.map((category) => byCategory.get(category.id))].filter((group): group is ServerLayoutGroup => group !== undefined);
+};
+
+const layoutCollisionDetection: CollisionDetection = (args) => {
+  const categoryDrag = String(args.active.id).startsWith('category:');
+  const droppableContainers = args.droppableContainers.filter((container) => {
+    const id = String(container.id);
+    return categoryDrag ? id.startsWith('category:') : id.startsWith('channel:') || id.startsWith('group:');
+  });
+
+  if (!args.pointerCoordinates) {
+    return closestCorners({ ...args, droppableContainers });
+  }
+
+  const collisions = pointerWithin({ ...args, droppableContainers });
+  if (categoryDrag) return collisions;
+
+  const channels = collisions.filter((collision) => String(collision.id).startsWith('channel:'));
+  if (channels.length > 0) return channels;
+
+  const uncategorized = collisions.find((collision) => String(collision.id) === 'group:null');
+  return uncategorized ? [uncategorized] : collisions;
+};
+
+function DroppableGroup({ id, extend = false, children }: { id: string; extend?: boolean; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div ref={setNodeRef} className={cn('rounded-md transition-colors', extend && '-mb-4 pb-4', isOver && 'bg-sidebar-accent/50')}>
+      {children}
+    </div>
+  );
+}
+
+function SortableChannel({
+  channel,
+  serverId,
+  isActive,
+  isOwner,
+  categories,
+  onMove,
+}: {
+  channel: ServerChannel;
+  serverId: string;
+  isActive: boolean;
+  isOwner: boolean;
+  categories: ServerCategory[];
+  onMove: (channelId: string, categoryId: string | null) => void;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `channel:${channel.id}` });
+
+  return (
+    <SidebarMenuItem ref={setNodeRef} style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition }} className={cn(isDragging && 'opacity-0')}>
+      <SidebarMenuButton asChild isActive={isActive}>
+        <Link {...(isOwner ? listeners : {})} href={`/channels/${serverId}/${channel.id}`} draggable={false} className="py-4">
+          <Hash className="h-5! w-5!" />
+          <span>{channel.name}</span>
+        </Link>
+      </SidebarMenuButton>
+      {isOwner && categories.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuAction showOnHover title="Channel options" aria-label="Channel options">
+              <MoreHorizontal />
+            </SidebarMenuAction>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Move to</DropdownMenuLabel>
+            <DropdownMenuItem disabled={!channel.categoryId} onSelect={() => onMove(channel.id, null)}>
+              Uncategorized
+            </DropdownMenuItem>
+            {categories.map((category) => (
+              <DropdownMenuItem key={category.id} disabled={channel.categoryId === category.id} onSelect={() => onMove(channel.id, category.id)}>
+                {category.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </SidebarMenuItem>
+  );
+}
+
+function SortableCategory({
+  category,
+  isCollapsed,
+  isOwner,
+  onToggle,
+  onRename,
+  onCreateChannel,
+  onDelete,
+  children,
+}: {
+  category: ServerCategory;
+  isCollapsed: boolean;
+  isOwner: boolean;
+  onToggle: () => void;
+  onRename: () => void;
+  onCreateChannel: () => void;
+  onDelete: () => void;
+  children: ReactNode;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `category:${category.id}` });
+
+  return (
+    <SidebarGroup ref={setNodeRef} style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition }} className={cn(isDragging && 'opacity-0')}>
+      <ContextMenu>
+        <ContextMenuTrigger asChild disabled={!isOwner} onContextMenu={(event) => event.stopPropagation()}>
+          <SidebarGroupLabel className="pr-8">
+            <button type="button" {...(isOwner ? listeners : {})} aria-expanded={!isCollapsed} onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1 self-stretch">
+              <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', isCollapsed && '-rotate-90')} />
+              <span className="truncate">{category.name}</span>
+            </button>
+          </SidebarGroupLabel>
+        </ContextMenuTrigger>
+        {isOwner && (
+          <ContextMenuContent className="w-56">
+            <ContextMenuItem onSelect={onRename}>
+              <Pencil />
+              Rename
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={onCreateChannel}>
+              <Plus />
+              Create channel
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={onDelete}>
+              <Trash2 />
+              Delete
+            </ContextMenuItem>
+          </ContextMenuContent>
+        )}
+      </ContextMenu>
+      {isOwner && (
+        <SidebarGroupAction type="button" title={`Create channel in ${category.name}`} aria-label={`Create channel in ${category.name}`} onClick={onCreateChannel}>
+          <Plus />
+        </SidebarGroupAction>
+      )}
+      {children}
+    </SidebarGroup>
+  );
+}
+
 export function ServerSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -66,8 +217,15 @@ export function ServerSidebar() {
   const [categoryName, setCategoryName] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [collapsedServerId, setCollapsedServerId] = useState<string | null>(null);
+  const [activeDrag, setActiveDrag] = useState<{ type: 'channel' | 'category'; id: string } | null>(null);
+  const suppressClickRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] } }),
+  );
 
   const { data } = useQuery<Server[]>({
     queryKey: ['servers'],
@@ -84,7 +242,9 @@ export function ServerSidebar() {
   const server = data?.find((item) => item.id === route?.serverId);
   const serverId = server?.id;
   const isOwner = Boolean(server && user && server.ownerId === user.id);
-  const categories = server?.categories ?? [];
+  const layout = server ? groupServer(server) : null;
+  const categories = layout?.categories ?? [];
+  const channelsById = new Map(server?.channels.map((channel) => [channel.id, channel]) ?? []);
 
   if (serverId && serverId !== collapsedServerId) {
     setCollapsedServerId(serverId);
@@ -193,38 +353,54 @@ export function ServerSidebar() {
     }
   };
 
-  const renderChannel = (channel: ServerChannel) => (
-    <SidebarMenuItem key={channel.id}>
-      <SidebarMenuButton asChild isActive={route?.channelId === channel.id}>
-        <Link href={`/channels/${server?.id}/${channel.id}`} className="py-4">
-          <Hash className="h-5! w-5!" />
-          <span>{channel.name}</span>
-        </Link>
-      </SidebarMenuButton>
-      {isOwner && categories.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuAction showOnHover title="Channel options" aria-label="Channel options">
-              <MoreHorizontal />
-            </SidebarMenuAction>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Move to</DropdownMenuLabel>
-            <DropdownMenuItem disabled={!channel.categoryId} onSelect={() => handleMoveChannel(channel.id, null)}>
-              Uncategorized
-            </DropdownMenuItem>
-            {categories.map((category) => (
-              <DropdownMenuItem key={category.id} disabled={channel.categoryId === category.id} onSelect={() => handleMoveChannel(channel.id, category.id)}>
-                {category.name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </SidebarMenuItem>
-  );
+  const handleLayoutDragStart = (event: DragStartEvent) => {
+    suppressClickRef.current = true;
+    const id = String(event.active.id);
+    setActiveDrag({ type: id.startsWith('category:') ? 'category' : 'channel', id: id.slice(id.indexOf(':') + 1) });
+  };
 
-  const uncategorized = server?.channels.filter((channel) => !channel.categoryId) ?? [];
+  const handleLayoutDragEnd = (event: DragEndEvent) => {
+    setActiveDrag(null);
+
+    if (!server) return;
+
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const current = groupServer(server);
+    const movingCategory = activeId.startsWith('category:');
+    const nextCategories = movingCategory ? moveCategory(current.categories, activeId, overId) : current.categories;
+    const nextGroups = movingCategory ? orderGroups(current.groups, nextCategories) : moveChannel(current.groups, activeId, overId);
+
+    const categoryPositions = new Map(nextCategories.map((category, index) => [category.id, index]));
+    const placements = new Map(nextGroups.flatMap((group) => group.channelIds.map((id, position) => [id, { categoryId: group.categoryId, position }] as const)));
+    const patched = {
+      categories: server.categories.map((category) => ({ ...category, position: categoryPositions.get(category.id) ?? category.position })),
+      channels: server.channels.map((channel) => ({ ...channel, ...(placements.get(channel.id) ?? {}) })),
+    };
+
+    const previousServers = queryClient.getQueryData<Server[]>(['servers']);
+    const previousDetail = queryClient.getQueryData<ServerDetail>(['server', server.id]);
+
+    queryClient.setQueryData<Server[]>(['servers'], (servers) => servers?.map((entry) => (entry.id === server.id ? { ...entry, ...patched } : entry)));
+    queryClient.setQueryData<ServerDetail>(['server', server.id], (detail) => (detail ? { ...detail, ...patched } : detail));
+
+    updateServerLayout(server.id, toLayoutPayload(nextGroups)).catch((caught) => {
+      if (previousServers) queryClient.setQueryData(['servers'], previousServers);
+      if (previousDetail) queryClient.setQueryData(['server', server.id], previousDetail);
+      toast.error(apiErrorMessage(caught));
+    });
+  };
+
+  const handleLayoutDragCancel = () => {
+    setActiveDrag(null);
+  };
+
+  const activeChannel = activeDrag?.type === 'channel' ? channelsById.get(activeDrag.id) : undefined;
+  const activeCategory = activeDrag?.type === 'category' ? categories.find((category) => category.id === activeDrag.id) : undefined;
+  const uncategorized = layout?.groups.find((group) => group.categoryId === null)?.channelIds ?? [];
 
   return (
     <Sidebar style={state === 'expanded' ? { left: SERVER_RAIL_WIDTH } : undefined}>
@@ -284,68 +460,117 @@ export function ServerSidebar() {
 
       <ContextMenu>
         <ContextMenuTrigger asChild disabled={!isOwner}>
-          <SidebarContent>
-            {server && (
-              <>
-                {uncategorized.length > 0 && (
-                  <SidebarGroup>
-                    <SidebarGroupContent>
-                      <SidebarMenu>{uncategorized.map(renderChannel)}</SidebarMenu>
-                    </SidebarGroupContent>
-                  </SidebarGroup>
-                )}
-                {categories.map((category) => {
-                  const channels = server.channels.filter((channel) => channel.categoryId === category.id);
-                  const isCollapsed = Boolean(collapsed[category.id]);
-
-                  return (
-                    <SidebarGroup key={category.id}>
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild disabled={!isOwner} onContextMenu={(event) => event.stopPropagation()}>
-                          <SidebarGroupLabel asChild>
-                            <button type="button" aria-expanded={!isCollapsed} onClick={() => toggleCategory(category.id)} className="w-full gap-1 pr-8">
-                              <ChevronDown className={cn('transition-transform', isCollapsed && '-rotate-90')} />
-                              <span className="truncate">{category.name}</span>
-                            </button>
-                          </SidebarGroupLabel>
-                        </ContextMenuTrigger>
-                        {isOwner && (
-                          <ContextMenuContent className="w-56">
-                            <ContextMenuItem onSelect={() => openCategoryDialog({ mode: 'rename', category })}>
-                              <Pencil />
-                              Rename
-                            </ContextMenuItem>
-                            <ContextMenuItem onSelect={() => setChannelTarget({ categoryId: category.id })}>
-                              <Plus />
-                              Create channel
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem variant="destructive" onSelect={() => openCategoryDialog({ mode: 'delete', category })}>
-                              <Trash2 />
-                              Delete
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        )}
-                      </ContextMenu>
-                      {isOwner && (
-                        <SidebarGroupAction
-                          type="button"
-                          title={`Create channel in ${category.name}`}
-                          aria-label={`Create channel in ${category.name}`}
-                          onClick={() => setChannelTarget({ categoryId: category.id })}
-                        >
-                          <Plus />
-                        </SidebarGroupAction>
-                      )}
-                      {!isCollapsed && (
-                        <SidebarGroupContent>
-                          <SidebarMenu>{channels.map(renderChannel)}</SidebarMenu>
-                        </SidebarGroupContent>
-                      )}
+          <SidebarContent
+            onPointerDownCapture={() => {
+              suppressClickRef.current = false;
+            }}
+            onKeyDownCapture={() => {
+              if (!activeDrag) suppressClickRef.current = false;
+            }}
+            onClickCapture={(event) => {
+              if (!suppressClickRef.current) return;
+              suppressClickRef.current = false;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            {server && layout && (
+              <DndContext
+                id="server-layout"
+                sensors={sensors}
+                collisionDetection={layoutCollisionDetection}
+                onDragStart={handleLayoutDragStart}
+                onDragEnd={handleLayoutDragEnd}
+                onDragCancel={handleLayoutDragCancel}
+              >
+                <SortableContext items={layout.categories.map((category) => `category:${category.id}`)} strategy={verticalListSortingStrategy}>
+                  <DroppableGroup id="group:null" extend>
+                    <SidebarGroup className={cn(uncategorized.length === 0 && 'min-h-8')}>
+                      <SidebarGroupContent>
+                        <SortableContext items={uncategorized.map((id) => `channel:${id}`)} strategy={verticalListSortingStrategy}>
+                          <SidebarMenu>
+                            {uncategorized
+                              .map((id) => channelsById.get(id))
+                              .filter((channel): channel is ServerChannel => Boolean(channel))
+                              .map((channel) => (
+                                <SortableChannel
+                                  key={channel.id}
+                                  channel={channel}
+                                  serverId={server.id}
+                                  isActive={route?.channelId === channel.id}
+                                  isOwner={isOwner}
+                                  categories={categories}
+                                  onMove={handleMoveChannel}
+                                />
+                              ))}
+                          </SidebarMenu>
+                        </SortableContext>
+                      </SidebarGroupContent>
                     </SidebarGroup>
-                  );
-                })}
-              </>
+                  </DroppableGroup>
+
+                  {layout.categories.map((category) => {
+                    const group = layout.groups.find((entry) => entry.categoryId === category.id);
+                    const channelIds = group?.channelIds ?? [];
+                    const isCollapsed = Boolean(collapsed[category.id]);
+
+                    return (
+                      <DroppableGroup key={category.id} id={`group:${category.id}`}>
+                        <SortableCategory
+                          category={category}
+                          isCollapsed={isCollapsed}
+                          isOwner={isOwner}
+                          onToggle={() => toggleCategory(category.id)}
+                          onRename={() => openCategoryDialog({ mode: 'rename', category })}
+                          onCreateChannel={() => setChannelTarget({ categoryId: category.id })}
+                          onDelete={() => openCategoryDialog({ mode: 'delete', category })}
+                        >
+                          {!isCollapsed && (
+                            <SidebarGroupContent>
+                              <SortableContext items={channelIds.map((id) => `channel:${id}`)} strategy={verticalListSortingStrategy}>
+                                <SidebarMenu>
+                                  {channelIds
+                                    .map((id) => channelsById.get(id))
+                                    .filter((channel): channel is ServerChannel => Boolean(channel))
+                                    .map((channel) => (
+                                      <SortableChannel
+                                        key={channel.id}
+                                        channel={channel}
+                                        serverId={server.id}
+                                        isActive={route?.channelId === channel.id}
+                                        isOwner={isOwner}
+                                        categories={categories}
+                                        onMove={handleMoveChannel}
+                                      />
+                                    ))}
+                                </SidebarMenu>
+                              </SortableContext>
+                            </SidebarGroupContent>
+                          )}
+                        </SortableCategory>
+                      </DroppableGroup>
+                    );
+                  })}
+                </SortableContext>
+                {activeDrag &&
+                  createPortal(
+                    <DragOverlay dropAnimation={null}>
+                      {activeChannel && (
+                        <div className="flex w-60 items-center gap-2 rounded-md bg-sidebar-accent px-2 py-2 text-sm text-sidebar-accent-foreground shadow-lg">
+                          <Hash className="h-4 w-4" />
+                          <span className="truncate">{activeChannel.name}</span>
+                        </div>
+                      )}
+                      {activeCategory && (
+                        <div className="flex w-60 items-center gap-1 rounded-md bg-sidebar-accent px-2 py-1.5 text-xs font-medium text-sidebar-accent-foreground shadow-lg">
+                          <ChevronDown className="h-4 w-4" />
+                          <span className="truncate">{activeCategory.name}</span>
+                        </div>
+                      )}
+                    </DragOverlay>,
+                    document.body,
+                  )}
+              </DndContext>
             )}
           </SidebarContent>
         </ContextMenuTrigger>
