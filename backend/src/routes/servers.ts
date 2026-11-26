@@ -259,6 +259,8 @@ app.post('/join', async (c) => {
       id: true,
       serverId: true,
       expiresAt: true,
+      channelId: true,
+      channel: { select: { id: true, serverId: true } },
       server: { select: serverSelect },
     },
   });
@@ -267,6 +269,8 @@ app.post('/join', async (c) => {
     if (invite) await prisma.serverInvite.deleteMany({ where: { id: invite.id } });
     return c.text('Invalid invite code', 404);
   }
+
+  const inviteChannelId = invite.channel && invite.channel.serverId === invite.serverId ? invite.channel.id : null;
 
   if (await getBan(invite.serverId, userId)) {
     return c.text('You are banned from this server', 403);
@@ -278,7 +282,7 @@ app.post('/join', async (c) => {
   });
 
   if (existing) {
-    return c.json(invite.server, 200);
+    return c.json({ ...invite.server, inviteChannelId }, 200);
   }
 
   const memberships = await prisma.serverMember.count({ where: { userId } });
@@ -294,13 +298,13 @@ app.post('/join', async (c) => {
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
-    return c.json(invite.server, 201);
+    return c.json({ ...invite.server, inviteChannelId }, 201);
   }
 
   const members = await prisma.serverMember.findMany({ where: { serverId: invite.serverId }, select: { userId: true } });
   eventBus.publish({ type: 'SERVER_MEMBER_ADDED', serverId: invite.serverId, recipientIds: members.map((member) => member.userId) });
 
-  return c.json(invite.server, 201);
+  return c.json({ ...invite.server, inviteChannelId }, 201);
 });
 
 app.get('/:id', async (c) => {
@@ -907,6 +911,7 @@ app.get('/:id/invites', async (c) => {
       code: true,
       createdAt: true,
       expiresAt: true,
+      channel: { select: { id: true, name: true } },
       createdBy: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -920,11 +925,21 @@ app.post('/:id/invites', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const limited = enforceRateLimit(c, inviteLimiter, c.get('user')!.id);
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, inviteLimiter, userId);
   if (limited) return limited;
 
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ channelId: z.string().trim().min(1).max(64).nullish() }).safeParse(body ?? {});
+
+  if (!result.success) {
+    return c.text('Invalid channel', 400);
+  }
+
+  const channelId = result.data.channelId ?? null;
+
   const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
+    where: { id: c.req.param('id'), members: { some: { userId } } },
     select: { id: true, ownerId: true },
   });
 
@@ -932,37 +947,60 @@ app.post('/:id/invites', async (c) => {
     return c.text('Server not found', 404);
   }
 
-  await prisma.serverInvite.deleteMany({ where: { serverId: server.id, expiresAt: { lte: new Date() } } });
-
-  const invites = await prisma.serverInvite.count({ where: { serverId: server.id } });
-  if (invites >= MAX_INVITES_PER_SERVER) {
-    if (server.ownerId !== c.get('user')!.id) {
-      return c.text('Invite limit reached', 409);
-    }
-
-    const existing = await prisma.serverInvite.findFirst({
-      where: { serverId: server.id },
-      select: { code: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  if (channelId) {
+    const channel = await prisma.channel.findFirst({
+      where: { id: channelId, serverId: server.id },
+      select: { id: true },
     });
 
-    if (existing) {
-      return c.json(existing, 200);
+    if (!channel) {
+      return c.text('Invalid channel', 400);
     }
   }
 
-  const invite = await prisma.serverInvite.create({
-    data: {
-      id: generateId(),
-      code: createInviteCode(),
-      serverId: server.id,
-      createdById: c.get('user')!.id,
-      expiresAt: new Date(Date.now() + INVITE_TTL_MS),
-    },
-    select: { code: true },
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Server" WHERE id = ${server.id} FOR UPDATE`;
+
+    await tx.serverInvite.deleteMany({ where: { serverId: server.id, expiresAt: { lte: new Date() } } });
+
+    const invites = await tx.serverInvite.count({ where: { serverId: server.id } });
+    if (invites >= MAX_INVITES_PER_SERVER) {
+      if (server.ownerId !== userId) return { error: 'limit' } as const;
+
+      const existing = await tx.serverInvite.findFirst({
+        where: { serverId: server.id, channelId },
+        select: { code: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      });
+
+      if (existing) return { existing } as const;
+      return { error: 'limit' } as const;
+    }
+
+    const invite = await tx.serverInvite.create({
+      data: {
+        id: generateId(),
+        code: createInviteCode(),
+        serverId: server.id,
+        channelId,
+        createdById: userId,
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+      },
+      select: { code: true },
+    });
+
+    return { invite } as const;
   });
 
-  return c.json(invite, 201);
+  if ('error' in outcome) {
+    return c.text('Invite limit reached', 409);
+  }
+
+  if ('existing' in outcome) {
+    return c.json(outcome.existing, 200);
+  }
+
+  return c.json(outcome.invite, 201);
 });
 
 app.delete('/:id/invites/:code', async (c) => {

@@ -99,12 +99,16 @@ model ServerInvite {
   id String @id
   code String @unique
   serverId String
+  channelId String?
   createdById String
   createdAt DateTime @default(now())
   expiresAt DateTime
 
   server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  channel Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
 }
 
 model ServerMember {
@@ -189,6 +193,7 @@ model Channel {
 
   members ChannelMember[]
   messages Message[]
+  invites ServerInvite[]
   server Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
   category ChannelCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
