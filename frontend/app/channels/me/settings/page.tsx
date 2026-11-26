@@ -3,18 +3,15 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AppearanceTab } from '@/components/settings/AppearanceTab';
+import { MyAccountTab } from '@/components/settings/MyAccountTab';
+import { ProfileTab } from '@/components/settings/ProfileTab';
+import { SessionsTab } from '@/components/settings/SessionsTab';
 
 const TABS = ['account', 'profile', 'sessions', 'appearance'] as const;
 type SettingsTab = (typeof TABS)[number];
-
-const THEMES = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
-];
 
 const isSettingsTab = (value: string | null): value is SettingsTab => value !== null && TABS.includes(value as SettingsTab);
 
@@ -29,7 +26,6 @@ export default function SettingsPage() {
 function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { theme, setTheme } = useTheme();
   const requested = searchParams.get('tab');
   const [tab, setTab] = useState<SettingsTab>(isSettingsTab(requested) ? requested : 'account');
 
@@ -71,43 +67,19 @@ function SettingsContent() {
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
           <TabsContent value="account" className="min-w-0 flex-1">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-semibold">My Account</h2>
-              <p className="text-sm text-muted-foreground">TODO</p>
-            </div>
+            <MyAccountTab />
           </TabsContent>
 
           <TabsContent value="profile" className="min-w-0 flex-1">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-semibold">Profile</h2>
-              <p className="text-sm text-muted-foreground">TODO</p>
-            </div>
+            <ProfileTab />
           </TabsContent>
 
           <TabsContent value="sessions" className="min-w-0 flex-1">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-semibold">Sessions</h2>
-              <p className="text-sm text-muted-foreground">TODO</p>
-            </div>
+            <SessionsTab />
           </TabsContent>
 
           <TabsContent value="appearance" className="min-w-0 flex-1">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <h2 className="text-lg font-semibold">Appearance</h2>
-                <p className="text-sm text-muted-foreground">Choose how Testauscord looks.</p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">Theme</span>
-                <div className="flex gap-2">
-                  {THEMES.map((option) => (
-                    <Button key={option.value} type="button" variant={theme === option.value ? 'default' : 'outline'} onClick={() => setTheme(option.value)}>
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <AppearanceTab />
           </TabsContent>
         </div>
       </Tabs>
