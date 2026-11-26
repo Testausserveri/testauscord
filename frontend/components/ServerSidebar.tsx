@@ -197,7 +197,7 @@ export function ServerSidebar() {
     <SidebarMenuItem key={channel.id}>
       <SidebarMenuButton asChild isActive={route?.channelId === channel.id}>
         <Link href={`/channels/${server?.id}/${channel.id}`} className="py-4">
-          <Hash className="!h-5 !w-5" />
+          <Hash className="h-5! w-5!" />
           <span>{channel.name}</span>
         </Link>
       </SidebarMenuButton>

@@ -208,7 +208,7 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
                 <div key={message.id} className={`group hover:bg-muted/50 ${isGrouped ? 'px-1' : 'px-2'} py-1 rounded transition-colors ${isGrouped ? 'mt-0.5' : 'mt-4'}`}>
                   {!isGrouped ? (
                     <div className="flex gap-4">
-                      <button type="button" onClick={(event) => openProfile(message.sender.id, event.currentTarget)} aria-label="View profile" className="flex-shrink-0">
+                      <button type="button" onClick={(event) => openProfile(message.sender.id, event.currentTarget)} aria-label="View profile" className="shrink-0">
                         <UserAvatar user={message.sender} className="h-10 w-10 mt-0.5" />
                       </button>
                       <div className="flex-1 min-w-0">
@@ -218,16 +218,16 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
                           </button>
                           <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">{formatTimestamp(message.createdAt)}</span>
                         </div>
-                        <div className="text-foreground leading-[1.375] break-words">{message.content}</div>
+                        <div className="text-foreground leading-snug wrap-break-word">{message.content}</div>
                       </div>
                     </div>
                   ) : (
                     <div className="flex gap-1">
-                      <div className="w-14 flex-shrink-0 flex justify-center">
-                        <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity leading-[1.375] mt-0.5">{formatTimestamp(message.createdAt)}</span>
+                      <div className="w-14 shrink-0 flex justify-center">
+                        <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity leading-snug mt-0.5">{formatTimestamp(message.createdAt)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-foreground leading-[1.375] break-words">{message.content}</div>
+                        <div className="text-foreground leading-snug wrap-break-word">{message.content}</div>
                       </div>
                     </div>
                   )}
@@ -247,10 +247,10 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
               onKeyUp={handleKeyPress}
               placeholder={placeholder}
               disabled={isSending}
-              className="resize-none min-h-[44px] max-h-32"
+              className="resize-none min-h-11 max-h-32"
             />
           </div>
-          <Button onClick={handleSendMessage} size="icon" disabled={!messageInput.trim() || isSending} className="h-11 w-11 flex-shrink-0">
+          <Button onClick={handleSendMessage} size="icon" disabled={!messageInput.trim() || isSending} className="h-11 w-11 shrink-0">
             <Send className="h-4 w-4" />
           </Button>
         </div>

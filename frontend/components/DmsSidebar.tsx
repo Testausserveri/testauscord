@@ -48,7 +48,7 @@ export function DmsSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={pathname === item.href}>
                     <Link href={item.href} className="py-5">
-                      <item.icon className="!h-6 !w-6" />
+                      <item.icon className="h-6! w-6!" />
                       <span>{item.title}</span>
                       {pendingCount > 0 && (
                         <span

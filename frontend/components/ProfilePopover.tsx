@@ -104,7 +104,7 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
               </div>
 
               <div className="border-t px-4 py-3">
-                <p className="whitespace-pre-wrap break-words text-sm">{profile.bio ?? 'No bio yet.'}</p>
+                <p className="whitespace-pre-wrap wrap-break-word text-sm">{profile.bio ?? 'No bio yet.'}</p>
               </div>
 
               {(isSelf || hasActions) && (
