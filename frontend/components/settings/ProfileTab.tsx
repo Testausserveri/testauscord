@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getUser, updateProfile } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
-import { encodeAvatar, type AvatarUpload } from '@/lib/imageUpload';
+import { encodeImage, type ImageUpload } from '@/lib/imageUpload';
 import { useSettled } from '@/lib/useSettled';
 import type { CurrentUser, ProfilePatch } from '@/types/types';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ function ProfileForm({ user }: { user: CurrentUser }) {
   const previewUrl = useRef<string | null>(null);
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [bio, setBio] = useState(user.bio ?? '');
-  const [avatar, setAvatar] = useState<{ preview: string; upload: AvatarUpload } | null>(null);
+  const [avatar, setAvatar] = useState<{ preview: string; upload: ImageUpload } | null>(null);
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [displayNameSettled, setDisplayNameSettled] = useSettled(displayName);
   const [bioSettled, setBioSettled] = useSettled(bio);
@@ -70,7 +70,7 @@ function ProfileForm({ user }: { user: CurrentUser }) {
   if (nextDisplayName !== (user.displayName ?? '')) patch.displayName = nextDisplayName || null;
   if ((nextBio || null) !== user.bio) patch.bio = nextBio || null;
   if (avatar) {
-    patch.avatar = avatar.upload.avatar;
+    patch.avatar = avatar.upload.image;
     if (avatar.upload.poster) patch.avatarPoster = avatar.upload.poster;
   } else if (avatarRemoved && user.avatarVersion != null) {
     patch.avatar = null;
@@ -88,12 +88,12 @@ function ProfileForm({ user }: { user: CurrentUser }) {
     setAvatarError(null);
 
     try {
-      const upload = await encodeAvatar(file);
+      const upload = await encodeImage(file);
 
       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
       previewUrl.current = null;
 
-      let preview = upload.avatar;
+      let preview = upload.image;
       if (upload.poster) {
         preview = URL.createObjectURL(file);
         previewUrl.current = preview;

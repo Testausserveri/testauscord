@@ -4,12 +4,12 @@ const MAX_ANIMATED_BYTES = 512 * 1024;
 const MAX_ANIMATED_DIMENSION = 256;
 const AVATAR_SIZE = 256;
 
-const ANIMATED_ERROR = 'Animated avatars must be 256x256 or smaller and under 512 KB. Use a smaller file or upload a still image.';
+const ANIMATED_ERROR = 'Animated images must be 256x256 or smaller and under 512 KB. Use a smaller file or upload a still image.';
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const GIF_SIGNATURE = [0x47, 0x49, 0x46, 0x38];
 
-export type AvatarUpload = { avatar: string; poster?: string };
+export type ImageUpload = { image: string; poster?: string };
 
 const hasMagic = (bytes: Uint8Array, magic: number[]) => bytes.length >= magic.length && magic.every((byte, index) => bytes[index] === byte);
 
@@ -87,7 +87,7 @@ const encodeStatic = async (file: File): Promise<string> => {
   }
 };
 
-const encodeAnimated = async (file: File, bytes: Uint8Array, type: 'gif' | 'png'): Promise<AvatarUpload> => {
+const encodeAnimated = async (file: File, bytes: Uint8Array, type: 'gif' | 'png'): Promise<ImageUpload> => {
   if (bytes.length > MAX_ANIMATED_BYTES) throw new Error(ANIMATED_ERROR);
 
   let bitmap: ImageBitmap;
@@ -107,13 +107,13 @@ const encodeAnimated = async (file: File, bytes: Uint8Array, type: 'gif' | 'png'
       throw new Error(ANIMATED_ERROR);
     }
 
-    return { avatar: `data:image/${type};base64,${toBase64(bytes)}`, poster };
+    return { image: `data:image/${type};base64,${toBase64(bytes)}`, poster };
   } finally {
     bitmap.close();
   }
 };
 
-export const encodeAvatar = async (file: File): Promise<AvatarUpload> => {
+export const encodeImage = async (file: File): Promise<ImageUpload> => {
   const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
 
   if (hasMagic(header, GIF_SIGNATURE) || file.type === 'image/gif') {
@@ -122,10 +122,10 @@ export const encodeAvatar = async (file: File): Promise<AvatarUpload> => {
   }
 
   if (file.size > MAX_SOURCE_BYTES) throw new Error('Images must be 5 MB or smaller');
-  if (!hasMagic(header, PNG_SIGNATURE)) return { avatar: await encodeStatic(file) };
+  if (!hasMagic(header, PNG_SIGNATURE)) return { image: await encodeStatic(file) };
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (file.type === 'image/apng' || hasApngChunk(bytes)) return encodeAnimated(file, bytes, 'png');
 
-  return { avatar: await encodeStatic(file) };
+  return { image: await encodeStatic(file) };
 };

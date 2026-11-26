@@ -1,20 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 import { avatarUrl } from '@/api/api';
-import { useAnimateAvatars } from '@/lib/avatarAnimation';
+import { useAnimateAvatars, useHoverAnimation, useReducedMotion } from '@/lib/avatarAnimation';
 import type { UserRef } from '@/types/types';
 import { Avatar, AvatarFallback } from './ui/avatar';
-
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
-
-const subscribeReducedMotion = (callback: () => void) => {
-  const query = window.matchMedia(REDUCED_MOTION);
-  query.addEventListener('change', callback);
-  return () => query.removeEventListener('change', callback);
-};
-
-const getReducedMotion = () => window.matchMedia(REDUCED_MOTION).matches;
 
 const initials = (name: string) =>
   name
@@ -25,31 +15,12 @@ const initials = (name: string) =>
     .toUpperCase();
 
 export function UserAvatar({ user, className, src, alwaysAnimate = false }: { user: UserRef; className?: string; src?: string; alwaysAnimate?: boolean }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [hovered, setHovered] = useState(false);
+  const { rootRef, active } = useHoverAnimation<HTMLDivElement>(alwaysAnimate);
   const animateAvatars = useAnimateAvatars();
-  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
+  const reducedMotion = useReducedMotion();
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
-    const scope = root.closest('[data-avatar-hover]') ?? root;
-    const enter = () => setHovered(true);
-    const leave = () => setHovered(false);
-
-    scope.addEventListener('pointerenter', enter);
-    scope.addEventListener('pointerleave', leave);
-
-    return () => {
-      scope.removeEventListener('pointerenter', enter);
-      scope.removeEventListener('pointerleave', leave);
-    };
-  }, []);
-
-  const playing = alwaysAnimate || hovered;
-  const imageSrc = src ?? (user.avatarVersion != null ? avatarUrl(user.id, user.avatarVersion, { static: !playing || !animateAvatars || reducedMotion }) : undefined);
+  const imageSrc = src ?? (user.avatarVersion != null ? avatarUrl(user.id, user.avatarVersion, { static: !active || !animateAvatars || reducedMotion }) : undefined);
 
   return (
     <Avatar ref={rootRef} className={className}>

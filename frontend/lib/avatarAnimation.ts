@@ -1,7 +1,8 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 const STORAGE_KEY = 'animate-avatars';
 const CHANGE_EVENT = 'animate-avatars-change';
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 const getSnapshot = () => window.localStorage.getItem(STORAGE_KEY) !== 'false';
 
@@ -21,3 +22,37 @@ export const setAnimateAvatars = (value: boolean) => {
 };
 
 export const useAnimateAvatars = () => useSyncExternalStore(subscribe, getSnapshot, () => true);
+
+const subscribeReducedMotion = (callback: () => void) => {
+  const query = window.matchMedia(REDUCED_MOTION);
+  query.addEventListener('change', callback);
+  return () => query.removeEventListener('change', callback);
+};
+
+const getReducedMotion = () => window.matchMedia(REDUCED_MOTION).matches;
+
+export const useReducedMotion = () => useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
+
+export const useHoverAnimation = <T extends HTMLElement>(alwaysAnimate = false) => {
+  const rootRef = useRef<T>(null);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const scope = root.closest('[data-avatar-hover]') ?? root;
+    const enter = () => setHovered(true);
+    const leave = () => setHovered(false);
+
+    scope.addEventListener('pointerenter', enter);
+    scope.addEventListener('pointerleave', leave);
+
+    return () => {
+      scope.removeEventListener('pointerenter', enter);
+      scope.removeEventListener('pointerleave', leave);
+    };
+  }, []);
+
+  return { rootRef, active: alwaysAnimate || hovered };
+};

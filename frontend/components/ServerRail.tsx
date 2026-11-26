@@ -24,15 +24,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { ServerActionDialogs } from './ServerActionDialogs';
+import { ServerIcon } from './ServerIcon';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((word) => word.charAt(0))
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
 function SortableServer({ server, isActive, user, onAction }: { server: Server; isActive: boolean; user: CurrentUser | undefined; onAction: (action: ServerAction) => void }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
@@ -52,9 +45,9 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
             href={href}
             draggable={false}
             title={server.name}
-            className={`flex h-12 w-12 shrink-0 cursor-grab items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 active:cursor-grabbing ${isActive ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
+            className={`flex h-12 w-12 shrink-0 cursor-grab items-center justify-center overflow-hidden rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 active:cursor-grabbing ${isActive ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
           >
-            {initials(server.name)}
+            <ServerIcon server={server} />
           </Link>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
@@ -262,8 +255,8 @@ export function ServerRail() {
           </SortableContext>
           <DragOverlay>
             {activeServer && (
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground shadow-lg">
-                {initials(activeServer.name)}
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground shadow-lg">
+                <ServerIcon server={activeServer} static />
               </div>
             )}
           </DragOverlay>

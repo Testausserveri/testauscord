@@ -15,12 +15,16 @@ import type {
   ServerDetail,
   ServerInvite,
   ServerLayoutPayload,
+  ServerPatch,
 } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export const avatarUrl = (userId: string, version: number, options: { static?: boolean } = {}) =>
   `${API_URL}/users/${encodeURIComponent(userId)}/avatar?v=${version}${options.static ? '&static=1' : ''}`;
+
+export const serverIconUrl = (serverId: string, version: number, options: { static?: boolean } = {}) =>
+  `${API_URL}/servers/${encodeURIComponent(serverId)}/icon?v=${version}${options.static ? '&static=1' : ''}`;
 
 // Drop cached private data and send to the login on expired/revoked session
 axios.interceptors.response.use(undefined, (error: AxiosError) => {
@@ -179,8 +183,8 @@ export const deleteCategory = async (serverId: string, categoryId: string) => {
   await axios.delete(`${API_URL}/servers/${serverId}/categories/${categoryId}`, { withCredentials: true });
 };
 
-export const renameServer = async (serverId: string, name: string): Promise<{ id: string; name: string }> => {
-  return await axios.patch(`${API_URL}/servers/${serverId}`, { name }, { withCredentials: true }).then((res) => res.data);
+export const updateServer = async (serverId: string, patch: ServerPatch): Promise<{ id: string; name: string; iconVersion: number | null }> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}`, patch, { withCredentials: true }).then((res) => res.data);
 };
 
 export const createInvite = async (serverId: string): Promise<{ code: string }> => {

@@ -76,8 +76,15 @@ export type Server = {
   name: string;
   ownerId: string;
   createdAt: string;
+  iconVersion: number | null;
   channels: ServerChannel[];
   categories: ServerCategory[];
+};
+
+export type ServerPatch = {
+  name?: string;
+  icon?: string | null;
+  iconPoster?: string;
 };
 
 export type ServerDetail = Server & {
