@@ -158,6 +158,10 @@ export const updateChannelCategory = async (serverId: string, channelId: string,
   return await axios.patch(`${API_URL}/servers/${serverId}/channels/${channelId}`, { categoryId }, { withCredentials: true }).then((res) => res.data);
 };
 
+export const renameChannel = async (serverId: string, channelId: string, name: string): Promise<ServerChannel> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}/channels/${channelId}`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
 export const updateServerLayout = async (serverId: string, payload: ServerLayoutPayload) => {
   await axios.put(`${API_URL}/servers/${serverId}/layout`, payload, { withCredentials: true });
 };

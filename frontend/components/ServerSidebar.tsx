@@ -12,7 +12,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { Ban, ChevronDown, FolderPlus, Hash, LogOut, MoreHorizontal, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCategory, createChannel, deleteCategory, getServers, getUser, updateCategory, updateChannelCategory, updateServerLayout } from '@/api/api';
+import { createCategory, createChannel, deleteCategory, getServers, getUser, renameChannel, updateCategory, updateChannelCategory, updateServerLayout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
 import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel, ServerDetail, ServerLayoutGroup } from '@/types/types';
@@ -100,6 +100,7 @@ function SortableChannel({
   isOwner,
   categories,
   onMove,
+  onRename,
 }: {
   channel: ServerChannel;
   serverId: string;
@@ -107,6 +108,7 @@ function SortableChannel({
   isOwner: boolean;
   categories: ServerCategory[];
   onMove: (channelId: string, categoryId: string | null) => void;
+  onRename: () => void;
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `channel:${channel.id}` });
 
@@ -118,7 +120,7 @@ function SortableChannel({
           <span>{channel.name}</span>
         </Link>
       </SidebarMenuButton>
-      {isOwner && categories.length > 0 && (
+      {isOwner && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarMenuAction showOnHover title="Channel options" aria-label="Channel options">
@@ -126,15 +128,24 @@ function SortableChannel({
             </SidebarMenuAction>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Move to</DropdownMenuLabel>
-            <DropdownMenuItem disabled={!channel.categoryId} onSelect={() => onMove(channel.id, null)}>
-              Uncategorized
+            <DropdownMenuItem onSelect={onRename}>
+              <Pencil />
+              Rename
             </DropdownMenuItem>
-            {categories.map((category) => (
-              <DropdownMenuItem key={category.id} disabled={channel.categoryId === category.id} onSelect={() => onMove(channel.id, category.id)}>
-                {category.name}
-              </DropdownMenuItem>
-            ))}
+            {categories.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Move to</DropdownMenuLabel>
+                <DropdownMenuItem disabled={!channel.categoryId} onSelect={() => onMove(channel.id, null)}>
+                  Uncategorized
+                </DropdownMenuItem>
+                {categories.map((category) => (
+                  <DropdownMenuItem key={category.id} disabled={channel.categoryId === category.id} onSelect={() => onMove(channel.id, category.id)}>
+                    {category.name}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -213,6 +224,8 @@ export function ServerSidebar() {
   const [action, setAction] = useState<ServerAction | null>(null);
   const [channelTarget, setChannelTarget] = useState<{ categoryId: string | null } | null>(null);
   const [channelName, setChannelName] = useState('');
+  const [channelRename, setChannelRename] = useState<ServerChannel | null>(null);
+  const [renameName, setRenameName] = useState('');
   const [categoryDialog, setCategoryDialog] = useState<CategoryDialog | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -281,6 +294,40 @@ export function ServerSidebar() {
       await queryClient.invalidateQueries({ queryKey: ['server', server.id] });
       closeChannelDialog();
       router.push(`/channels/${server.id}/${channel.id}`);
+    } catch (caught) {
+      setError(apiErrorMessage(caught));
+      setBusy(false);
+    }
+  };
+
+  const openChannelRename = (channel: ServerChannel) => {
+    setRenameName(channel.name);
+    setBusy(false);
+    setError(null);
+    setChannelRename(channel);
+  };
+
+  const closeChannelRename = () => {
+    setChannelRename(null);
+    setRenameName('');
+    setBusy(false);
+    setError(null);
+  };
+
+  const handleRenameChannel = async (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!server || !channelRename || busy) return;
+
+    const name = renameName.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!name) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await renameChannel(server.id, channelRename.id, name);
+      await queryClient.invalidateQueries({ queryKey: ['servers'] });
+      await queryClient.invalidateQueries({ queryKey: ['server', server.id] });
+      closeChannelRename();
     } catch (caught) {
       setError(apiErrorMessage(caught));
       setBusy(false);
@@ -501,6 +548,7 @@ export function ServerSidebar() {
                                   isOwner={isOwner}
                                   categories={categories}
                                   onMove={handleMoveChannel}
+                                  onRename={() => openChannelRename(channel)}
                                 />
                               ))}
                           </SidebarMenu>
@@ -541,6 +589,7 @@ export function ServerSidebar() {
                                         isOwner={isOwner}
                                         categories={categories}
                                         onMove={handleMoveChannel}
+                                        onRename={() => openChannelRename(channel)}
                                       />
                                     ))}
                                 </SidebarMenu>
@@ -609,6 +658,31 @@ export function ServerSidebar() {
               </Button>
               <Button type="submit" disabled={!channelName.trim() || busy}>
                 Create channel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={channelRename !== null} onOpenChange={(open) => !open && closeChannelRename()}>
+        <DialogContent>
+          <form onSubmit={handleRenameChannel} className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>Rename channel</DialogTitle>
+              <DialogDescription>Pick a new name for this channel.</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="channel-rename">Channel name</Label>
+              <Input id="channel-rename" value={renameName} onChange={(event) => setRenameName(event.target.value)} placeholder="new-channel" maxLength={32} disabled={busy} />
+              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens.</p>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeChannelRename}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!renameName.trim() || busy}>
+                Save
               </Button>
             </DialogFooter>
           </form>
