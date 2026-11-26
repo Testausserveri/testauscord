@@ -15,7 +15,11 @@ export function proxy(request: NextRequest) {
 
   if ((request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup')) && cookie) return NextResponse.redirect(new URL('/channels/@me', request.url));
 
-  if (request.nextUrl.pathname.startsWith('/channels/@me')) return NextResponse.rewrite(new URL(`/channels/me${request.nextUrl.pathname.split('/channels/@me')[1]}`, request.url));
+  if (request.nextUrl.pathname.startsWith('/channels/@me')) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/channels/me${url.pathname.split('/channels/@me')[1]}`;
+    return NextResponse.rewrite(url);
+  }
 
   return NextResponse.next();
 }

@@ -23,7 +23,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
-import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { ServerActionDialogs } from './ServerActionDialogs';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 
@@ -104,12 +103,12 @@ export function ServerRail() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const route = getServerRoute(pathname);
+  const isSettingsRoute = pathname === '/channels/me/settings' || pathname === '/channels/@me/settings';
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [serverName, setServerName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,7 +230,7 @@ export function ServerRail() {
           href="/channels/@me"
           title="Direct Messages"
           aria-label="Direct Messages"
-          className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
+          className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route || isSettingsRoute ? '' : 'rounded-xl ring-2 ring-sidebar-ring'}`}
         >
           <MessageCircle className="h-6 w-6" />
           {pendingCount > 0 && (
@@ -318,10 +317,12 @@ export function ServerRail() {
 
       <button
         type="button"
-        onClick={() => setSettingsOpen(true)}
+        onClick={() => {
+          if (!isSettingsRoute) router.push('/channels/@me/settings');
+        }}
         title="Account settings"
         aria-label="Account settings"
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80"
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${isSettingsRoute ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
       >
         <Settings className="h-5 w-5" />
       </button>
@@ -335,8 +336,6 @@ export function ServerRail() {
       >
         <LogOut className="h-5 w-5" />
       </button>
-
-      <AccountSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <Dialog open={logoutOpen} onOpenChange={(open) => !loggingOut && setLogoutOpen(open)}>
         <DialogContent>

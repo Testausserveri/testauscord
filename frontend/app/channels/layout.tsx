@@ -18,6 +18,7 @@ import { getServerRoute } from '@/lib/serverRoutes';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isServerRoute = getServerRoute(pathname) !== null;
+  const isSettingsRoute = pathname === '/channels/me/settings' || pathname === '/channels/@me/settings';
 
   return (
     <WebSocketProvider>
@@ -28,8 +29,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SidebarProvider>
           <div className="flex h-screen w-full">
             <ServerRail />
-            {isServerRoute ? <ServerSidebar /> : <DmsSidebar />}
-            <SidebarToggle />
+            {isSettingsRoute ? null : isServerRoute ? <ServerSidebar /> : <DmsSidebar />}
+            {!isSettingsRoute && <SidebarToggle />}
             <SidebarInset>{children}</SidebarInset>
           </div>
         </SidebarProvider>
