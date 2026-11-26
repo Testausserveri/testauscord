@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { getFriends } from '@/api/api';
 import { FriendsPage } from '@/components/FriendsPage';
 import Loader from '@/components/Loader';
@@ -14,5 +15,9 @@ export default function Me() {
 
   if (isPending) return <Loader />;
 
-  return <FriendsPage />;
+  return (
+    <Suspense fallback={<Loader />}>
+      <FriendsPage />
+    </Suspense>
+  );
 }

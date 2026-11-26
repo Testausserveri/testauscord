@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SubmitEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users } from 'lucide-react';
@@ -19,11 +20,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 const isValidUsername = (value: string) => value.length >= 3 && value.length <= 31 && USERNAME_PATTERN.test(value);
 
+const TABS = ['all', 'pending', 'add'] as const;
+type FriendsTab = (typeof TABS)[number];
+
+const isFriendsTab = (value: string | null): value is FriendsTab => value !== null && TABS.includes(value as FriendsTab);
+
 const isNotFound = (error: unknown) => axios.isAxiosError(error) && error.response?.status === 404;
 
 const sentDate = (value: string) => new Date(value).toLocaleDateString();
 
 export function FriendsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requested = searchParams.get('tab');
+  const [tab, setTab] = useState<FriendsTab>(isFriendsTab(requested) ? requested : 'all');
+
+  const selectTab = (value: FriendsTab) => {
+    if (value === tab) return;
+    setTab(value);
+    router.replace(`/channels/@me?tab=${value}`, { scroll: false });
+  };
+
   return (
     <div className="h-full flex flex-col">
       <header className="px-4 py-3 border-b flex items-center gap-2">
@@ -31,7 +48,7 @@ export function FriendsPage() {
         <h1 className="font-semibold">Friends</h1>
       </header>
 
-      <Tabs defaultValue="all" className="flex-1 min-h-0">
+      <Tabs value={tab} onValueChange={(value) => selectTab(value as FriendsTab)} className="flex-1 min-h-0">
         <div className="px-4 pt-3">
           <TabsList className="w-full">
             <TabsTrigger value="all">All</TabsTrigger>
