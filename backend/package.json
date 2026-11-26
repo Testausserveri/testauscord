@@ -21,8 +21,9 @@
     "@oslojs/encoding": "^1.1.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "apng-js": "^1.1.5",
     "hono": "^4.13.19",
-    "image-size": "^2.1.0",
+    "sharp": "^0.35.5",
     "zod": "^4.6.7"
   }
 }

@@ -50,8 +50,8 @@ const nextAvatarVersion = () => Math.floor(Math.random() * 1_000_000_000) + 1;
 
 type AvatarWrite = { clear: true } | { data: Uint8Array<ArrayBuffer>; contentType: string; version: number };
 
-const parseAvatar = (value: string): AvatarWrite | null => {
-  const decoded = decodeImageDataUrl(value);
+const parseAvatar = async (value: string): Promise<AvatarWrite | null> => {
+  const decoded = await decodeImageDataUrl(value);
   if (!decoded) return null;
   if (decoded.data.length > MAX_AVATAR_BYTES) return null;
   if (decoded.width > MAX_AVATAR_DIMENSION || decoded.height > MAX_AVATAR_DIMENSION) return null;
@@ -102,7 +102,7 @@ app.patch('/users/@me', async (c) => {
     }
   }
 
-  const avatarWrite = avatar === undefined ? undefined : avatar === null ? ({ clear: true } as const) : parseAvatar(avatar);
+  const avatarWrite = avatar === undefined ? undefined : avatar === null ? ({ clear: true } as const) : await parseAvatar(avatar);
 
   if (avatarWrite === null) {
     return c.text('Invalid avatar', 400);

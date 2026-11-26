@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import sharp from 'sharp';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
@@ -73,35 +74,15 @@ const patch = (app: Hono<{ Variables: Variables }>, body: unknown) =>
     body: JSON.stringify(body),
   });
 
-const ascii = (value: string) => [...value].map((char) => char.charCodeAt(0));
-
-const vp8x = (width: number, height: number) => {
-  const w = width - 1;
-  const h = height - 1;
-  return new Uint8Array([
-    ...ascii('RIFF'),
-    0,
-    0,
-    0,
-    0,
-    ...ascii('WEBP'),
-    ...ascii('VP8X'),
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    w & 0xff,
-    (w >> 8) & 0xff,
-    (w >> 16) & 0xff,
-    h & 0xff,
-    (h >> 8) & 0xff,
-    (h >> 16) & 0xff,
-  ]);
-};
+const avatarWebp = await sharp({ create: { width: 256, height: 256, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } })
+  .webp()
+  .toBuffer();
+const wideAvatarWebp = await sharp({ create: { width: 2048, height: 256, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } })
+  .webp()
+  .toBuffer();
+const tallAvatarWebp = await sharp({ create: { width: 256, height: 2048, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } })
+  .webp()
+  .toBuffer();
 
 const dataUrl = (image: Uint8Array, declared = 'webp') => `data:image/${declared};base64,${Buffer.from(image).toString('base64')}`;
 
@@ -136,7 +117,7 @@ test('saves a WebP avatar and returns the new version', async () => {
   const { events, stop } = captureUserUpdates();
 
   try {
-    const response = await patch(app, { avatar: dataUrl(vp8x(256, 256)) });
+    const response = await patch(app, { avatar: dataUrl(avatarWebp) });
 
     expect(response.status).toBe(200);
 
@@ -154,14 +135,14 @@ test('saves a WebP avatar and returns the new version', async () => {
 test('derives the stored content type from magic bytes', async () => {
   const app = createApp('writer');
 
-  const response = await patch(app, { avatar: dataUrl(vp8x(256, 256), 'jpeg') });
+  const response = await patch(app, { avatar: dataUrl(avatarWebp, 'jpeg') });
 
   expect(response.status).toBe(200);
   expect(users.writer!.avatar?.contentType).toBe('image/webp');
 });
 
 test('clears the avatar with null', async () => {
-  users.writer = { ...users.writer!, avatarVersion: 42, avatar: { data: vp8x(256, 256), contentType: 'image/webp' } };
+  users.writer = { ...users.writer!, avatarVersion: 42, avatar: { data: avatarWebp, contentType: 'image/webp' } };
   const app = createApp('writer');
 
   const response = await patch(app, { avatar: null });
@@ -174,15 +155,15 @@ test('clears the avatar with null', async () => {
 test('rejects invalid avatars', async () => {
   const app = createApp('writer');
   const oversized = new Uint8Array(129 * 1024);
-  oversized.set(vp8x(256, 256));
+  oversized.set(avatarWebp);
 
   const bodies = [
     { avatar: 'data:image/png;base64,iVBORw0KGgo=' },
     { avatar: 'data:image/webp;base64,***' },
-    { avatar: dataUrl(vp8x(256, 256), 'png') },
+    { avatar: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' },
     { avatar: dataUrl(new Uint8Array([0x89, 0x50, 0x4e, 0x47])) },
-    { avatar: dataUrl(vp8x(2048, 256)) },
-    { avatar: dataUrl(vp8x(256, 2048)) },
+    { avatar: dataUrl(wideAvatarWebp) },
+    { avatar: dataUrl(tallAvatarWebp) },
     { avatar: dataUrl(oversized) },
     { avatar: 5 },
   ];
@@ -194,7 +175,7 @@ test('rejects invalid avatars', async () => {
 });
 
 test('serves the avatar with private immutable caching', async () => {
-  users.friend = { ...users.friend!, avatarVersion: 42, avatar: { data: vp8x(256, 256), contentType: 'image/webp' } };
+  users.friend = { ...users.friend!, avatarVersion: 42, avatar: { data: avatarWebp, contentType: 'image/webp' } };
   friendship = { id: 'friendship-1' };
 
   const response = await createApp('writer').request('/users/friend/avatar');
@@ -205,11 +186,11 @@ test('serves the avatar with private immutable caching', async () => {
   expect(response.headers.get('cross-origin-resource-policy')).toBe('same-site');
   expect(response.headers.get('x-content-type-options')).toBe('nosniff');
   expect(response.headers.get('etag')).toBe('"v42"');
-  expect(new Uint8Array(await response.arrayBuffer())).toEqual(vp8x(256, 256));
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(avatarWebp);
 });
 
 test('returns 304 for a matching ETag', async () => {
-  users.friend = { ...users.friend!, avatarVersion: 42, avatar: { data: vp8x(256, 256), contentType: 'image/webp' } };
+  users.friend = { ...users.friend!, avatarVersion: 42, avatar: { data: avatarWebp, contentType: 'image/webp' } };
   friendship = { id: 'friendship-1' };
 
   const response = await createApp('writer').request('/users/friend/avatar', { headers: { 'if-none-match': '"v42"' } });
@@ -219,7 +200,7 @@ test('returns 304 for a matching ETag', async () => {
 });
 
 test('hides avatars from unrelated users and for missing avatars', async () => {
-  users.stranger = { ...users.stranger!, avatarVersion: 7, avatar: { data: vp8x(256, 256), contentType: 'image/webp' } };
+  users.stranger = { ...users.stranger!, avatarVersion: 7, avatar: { data: avatarWebp, contentType: 'image/webp' } };
   const app = createApp('writer');
 
   const unrelated = await app.request('/users/stranger/avatar');
@@ -239,7 +220,7 @@ test('requires authentication', async () => {
 });
 
 test('throttles avatar requests per viewer after 300 requests', async () => {
-  users['avatar-throttle'] = { ...users['avatar-throttle']!, avatarVersion: 1, avatar: { data: vp8x(256, 256), contentType: 'image/webp' } };
+  users['avatar-throttle'] = { ...users['avatar-throttle']!, avatarVersion: 1, avatar: { data: avatarWebp, contentType: 'image/webp' } };
   const app = createApp('avatar-throttle');
   const statuses: number[] = [];
 
