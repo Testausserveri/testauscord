@@ -129,7 +129,7 @@ export function ServerRail() {
 
   return (
     <nav style={{ width: SERVER_RAIL_WIDTH }} className="relative z-20 flex shrink-0 flex-col items-center gap-2 overflow-hidden border-r border-sidebar-border bg-sidebar py-3">
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Link
           href="/channels/@me"
           title="Direct Messages"
