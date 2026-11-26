@@ -18,6 +18,7 @@ let channels: ChannelRow[] = [];
 let events: DomainEvent[] = [];
 let stopEvents: (() => void) | null = null;
 let failCategoryCreate = false;
+let failChannelRename = false;
 
 const uniqueError = () => Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
 
@@ -92,8 +93,15 @@ const findChannels = mock(async ({ where }: { where: { serverId: string; categor
     .map((entry) => ({ id: entry.id, name: entry.name, type: entry.type, categoryId: entry.categoryId, position: entry.position }));
 });
 
-const findChannel = mock(async ({ where }: { where: { id: string; serverId: string } }) => {
-  const row = channels.find((entry) => entry.id === where.id && entry.serverId === where.serverId);
+const findChannel = mock(async ({ where }: { where: { id?: string | { not: string }; serverId?: string; name?: string } }) => {
+  const row = channels.find((entry) => {
+    if (where.serverId !== undefined && entry.serverId !== where.serverId) return false;
+    if (typeof where.id === 'string' && entry.id !== where.id) return false;
+    if (typeof where.id === 'object' && entry.id === where.id.not) return false;
+    if (where.name !== undefined && entry.name !== where.name) return false;
+    return true;
+  });
+
   return row ? { id: row.id, name: row.name, type: row.type, categoryId: row.categoryId, position: row.position } : null;
 });
 
@@ -113,12 +121,15 @@ const createChannel = mock(async ({ data }: { data: { id: string; serverId: stri
   return { id: row.id, name: row.name, type: row.type, categoryId: row.categoryId, position: row.position };
 });
 
-const updateChannel = mock(async ({ where, data }: { where: { id: string }; data: { categoryId: string | null; position: number } }) => {
+const updateChannel = mock(async ({ where, data }: { where: { id: string }; data: { name?: string; categoryId?: string | null; position?: number } }) => {
+  if (data.name !== undefined && failChannelRename) throw uniqueError();
+
   const row = channels.find((entry) => entry.id === where.id);
   if (!row) throw new Error('Channel not found');
 
-  row.categoryId = data.categoryId;
-  row.position = data.position;
+  if (data.name !== undefined) row.name = data.name;
+  if (data.categoryId !== undefined) row.categoryId = data.categoryId;
+  if (data.position !== undefined) row.position = data.position;
   return row;
 });
 
@@ -219,6 +230,7 @@ beforeEach(() => {
   channels = [];
   events = [];
   failCategoryCreate = false;
+  failChannelRename = false;
   stopEvents = eventBus.subscribe((event) => events.push(event));
 });
 
@@ -548,4 +560,84 @@ test('guards channel assignment by membership and ownership', async () => {
   expect((await patch(outsiderApp, `/${serverId}/channels/move-me`, { categoryId: null })).status).toBe(404);
   expect((await patch(unauthenticated, `/${serverId}/channels/move-me`, { categoryId: null })).status).toBe(401);
   expect((await patch(ownerApp, `/${serverId}/channels/move-me`, {})).status).toBe(400);
+});
+
+test('renames a channel and publishes the layout', async () => {
+  const { serverId, ownerApp } = seedServer('rename', [{ id: 'rename-me', name: 'old-name', position: 0 }]);
+
+  const response = await patch(ownerApp, `/${serverId}/channels/rename-me`, { name: '  new-name  ' });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ id: 'rename-me', name: 'new-name' });
+  expect(channels[0]?.name).toBe('new-name');
+  expect(events).toEqual([
+    {
+      type: 'SERVER_LAYOUT_UPDATE',
+      serverId,
+      layout: {
+        categories: [],
+        channels: [{ id: 'rename-me', name: 'new-name', type: 'TEXT', categoryId: null, position: 0 }],
+      },
+      recipientIds: ['owner-rename', 'member-rename'],
+    },
+  ]);
+});
+
+test('rejects a duplicate channel name', async () => {
+  const { serverId, ownerApp } = seedServer('rename-duplicate', [
+    { id: 'one', name: 'general', position: 0 },
+    { id: 'two', name: 'other', position: 1 },
+  ]);
+
+  const response = await patch(ownerApp, `/${serverId}/channels/two`, { name: 'general' });
+
+  expect(response.status).toBe(409);
+  expect(await response.text()).toBe('Channel name already in use');
+  expect(channels.find((channel) => channel.id === 'two')?.name).toBe('other');
+  expect(events).toEqual([]);
+});
+
+test('maps a unique constraint race to 409', async () => {
+  const { serverId, ownerApp } = seedServer('rename-race', [{ id: 'race-me', name: 'old-name', position: 0 }]);
+  failChannelRename = true;
+
+  const response = await patch(ownerApp, `/${serverId}/channels/race-me`, { name: 'new-name' });
+
+  expect(response.status).toBe(409);
+  expect(channels[0]?.name).toBe('old-name');
+  expect(events).toEqual([]);
+});
+
+test('renames and moves a channel in one request', async () => {
+  const { serverId, ownerApp } = seedServer('rename-move', [{ id: 'rename-move-me', name: 'alpha', position: 0 }]);
+  categories.push({ id: 'category-rename-move', serverId, name: 'Projects', position: 0, createdAt: new Date() });
+
+  const response = await patch(ownerApp, `/${serverId}/channels/rename-move-me`, { name: 'beta', categoryId: 'category-rename-move' });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ id: 'rename-move-me', name: 'beta', categoryId: 'category-rename-move', position: 0 });
+  expect(channels[0]?.name).toBe('beta');
+  expect(channels[0]?.categoryId).toBe('category-rename-move');
+  expect(events).toHaveLength(1);
+});
+
+test('rejects invalid channel names', async () => {
+  const { serverId, ownerApp } = seedServer('rename-invalid', [{ id: 'invalid-me', name: 'valid', position: 0 }]);
+
+  for (const name of ['', 'Upper', 'has space', 'x'.repeat(33)]) {
+    expect((await patch(ownerApp, `/${serverId}/channels/invalid-me`, { name })).status).toBe(400);
+  }
+
+  expect(channels[0]?.name).toBe('valid');
+  expect(events).toEqual([]);
+});
+
+test('treats a same-name rename as a no-op', async () => {
+  const { serverId, ownerApp } = seedServer('rename-noop', [{ id: 'same-name', name: 'same', position: 0 }]);
+
+  const response = await patch(ownerApp, `/${serverId}/channels/same-name`, { name: 'same' });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ id: 'same-name', name: 'same' });
+  expect(events).toEqual([]);
 });

@@ -8,7 +8,7 @@ import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
-import { planCategoryDelete, planChannelAssign, planLayout, nextPosition } from '../services/serverLayout';
+import { planCategoryDelete, planChannelAssign, planLayout, nextPosition, type ChannelPlacement } from '../services/serverLayout';
 import { nextServerPosition } from '../services/serverOrder';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
@@ -708,10 +708,16 @@ app.patch('/:id/channels/:channelId', async (c) => {
   if (limited) return limited;
 
   const body = await c.req.json().catch(() => null);
-  const result = z.object({ categoryId: z.string().min(1).max(64).nullable() }).safeParse(body);
+  const result = z
+    .object({
+      name: channelNameSchema.optional(),
+      categoryId: z.string().min(1).max(64).nullable().optional(),
+    })
+    .refine((data) => data.name !== undefined || data.categoryId !== undefined)
+    .safeParse(body);
 
   if (!result.success) {
-    return c.text('Invalid category', 400);
+    return c.text('Invalid channel update', 400);
   }
 
   const server = await findManageableServer(c.req.param('id'), userId);
@@ -721,7 +727,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
   }
 
   if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can move channels', 403);
+    return c.text('Only the server owner can manage channels', 403);
   }
 
   const channel = await prisma.channel.findFirst({
@@ -733,9 +739,21 @@ app.patch('/:id/channels/:channelId', async (c) => {
     return c.text('Channel not found', 404);
   }
 
-  const categoryId = result.data.categoryId;
+  const { name, categoryId } = result.data;
+  const renaming = name !== undefined && name !== channel.name;
 
-  if (categoryId !== null) {
+  if (renaming) {
+    const duplicate = await prisma.channel.findFirst({
+      where: { serverId: server.id, id: { not: channel.id }, name },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      return c.text('Channel name already in use', 409);
+    }
+  }
+
+  if (categoryId !== undefined && categoryId !== null) {
     const category = await prisma.channelCategory.findFirst({
       where: { id: categoryId, serverId: server.id },
       select: { id: true },
@@ -746,21 +764,48 @@ app.patch('/:id/channels/:channelId', async (c) => {
     }
   }
 
-  const channels = await prisma.channel.findMany({
-    where: { serverId: server.id },
-    select: { id: true, categoryId: true, position: true },
-  });
+  let plan: ChannelPlacement[] = [];
 
-  const plan = planChannelAssign(channels, channel.id, categoryId);
+  if (categoryId !== undefined) {
+    const channels = await prisma.channel.findMany({
+      where: { serverId: server.id },
+      select: { id: true, categoryId: true, position: true },
+    });
 
-  if (plan.length > 0) {
-    await prisma.$transaction(plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: entry.categoryId, position: entry.position } })));
+    plan = planChannelAssign(channels, channel.id, categoryId);
+  }
+
+  const updates: Prisma.PrismaPromise<unknown>[] = [
+    ...(renaming ? [prisma.channel.update({ where: { id: channel.id }, data: { name } })] : []),
+    ...plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: entry.categoryId, position: entry.position } })),
+  ];
+
+  try {
+    if (updates.length > 0) {
+      await prisma.$transaction(updates);
+    }
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Channel name already in use', 409);
+    }
+    throw error;
+  }
+
+  if (renaming || plan.length > 0) {
     await publishServerLayout(server.id);
   }
 
   const moved = plan.find((entry) => entry.id === channel.id);
 
-  return c.json({ ...channel, categoryId: moved?.categoryId ?? categoryId, position: moved?.position ?? channel.position }, 200);
+  return c.json(
+    {
+      ...channel,
+      name: renaming ? name : channel.name,
+      categoryId: moved ? moved.categoryId : channel.categoryId,
+      position: moved ? moved.position : channel.position,
+    },
+    200,
+  );
 });
 
 app.get('/:id/invites', async (c) => {
