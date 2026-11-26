@@ -12,7 +12,7 @@ import { getUserRef } from '../services/profiles';
 const app = new Hono<{ Variables: Variables }>();
 const friendRequestLimiter = createRateLimiter(10, 60 * 60_000);
 const friendMutationLimiter = createRateLimiter(60, 60_000);
-const friendRequestResponse = 'If that user exists, a friend request has been sent';
+const friendRequestResponse = 'Friend request sent';
 
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
@@ -47,7 +47,7 @@ app.post('/sendRequest', async (c) => {
   });
 
   if (!targetUser) {
-    return c.text(friendRequestResponse, 202);
+    return c.text('User not found', 404);
   }
 
   const pair = friendPair(c.get('user')!.id, targetUser.id);

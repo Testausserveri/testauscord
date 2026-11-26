@@ -188,7 +188,7 @@ afterEach(() => {
 
 afterAll(() => mock.restore());
 
-test('returns the same opaque response for missing, pending and reverse requests', async () => {
+test('returns 404 for missing users and 202 for pending and reverse requests', async () => {
   const sender = withUser('user-sender', 'sender');
   const app = createApp(sender);
 
@@ -197,13 +197,14 @@ test('returns the same opaque response for missing, pending and reverse requests
   const duplicate = await post(app, '/sendRequest', { target: 'bob' });
   const reverse = await post(createApp(bob), '/sendRequest', { target: 'sender' });
 
-  const body = 'If that user exists, a friend request has been sent';
+  const body = 'Friend request sent';
 
-  expect(missing.status).toBe(202);
+  expect(missing.status).toBe(404);
   expect(sent.status).toBe(202);
   expect(duplicate.status).toBe(202);
   expect(reverse.status).toBe(202);
-  expect(await missing.text()).toBe(body);
+  expect(await missing.text()).toBe('User not found');
+  expect(await sent.text()).toBe(body);
   expect(await duplicate.text()).toBe(body);
   expect(await reverse.text()).toBe(body);
   expect(requests).toHaveLength(1);
@@ -218,7 +219,7 @@ test('returns the same opaque response for missing, pending and reverse requests
   ]);
 });
 
-test('returns the same opaque response when already friends', async () => {
+test('returns 202 without creating a request when already friends', async () => {
   const sender = withUser('user-friend', 'friend');
   const app = createApp(sender);
   friendships.push({ id: 'friendship-1', ...friendPair(sender.id, bob.id), createdAt: new Date() });
@@ -378,7 +379,7 @@ test('throttles friend request sends per user', async () => {
     statuses.push(last.status);
   }
 
-  expect(statuses.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 202));
+  expect(statuses.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 404));
   expect(statuses[10]).toBe(429);
   expect(last!.headers.get('retry-after')).toBeTruthy();
 });
