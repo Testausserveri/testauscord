@@ -137,6 +137,10 @@ export const getServer = async (id: string): Promise<ServerDetail> => {
   return await axios.get(`${API_URL}/servers/${id}`, { withCredentials: true }).then((res) => res.data);
 };
 
+export const reorderServers = async (serverIds: string[]) => {
+  await axios.put(`${API_URL}/servers/order`, { serverIds }, { withCredentials: true });
+};
+
 export const createServer = async (name: string): Promise<Server> => {
   return await axios.post(`${API_URL}/servers/create`, { name }, { withCredentials: true }).then((res) => res.data);
 };

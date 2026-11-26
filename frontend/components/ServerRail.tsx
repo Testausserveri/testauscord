@@ -5,8 +5,12 @@ import type { SubmitEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Ban, LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
-import { createServer, getPendingRequests, getServers, getUser, joinServer, logout } from '@/api/api';
+import { createServer, getPendingRequests, getServers, getUser, joinServer, logout, reorderServers } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
@@ -31,6 +35,70 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
+function SortableServer({ server, isActive, user, onAction }: { server: Server; isActive: boolean; user: CurrentUser | undefined; onAction: (action: ServerAction) => void }) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
+  const channel = firstChannel(server);
+  const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex h-12 w-12 shrink-0 touch-none items-center justify-center ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Link
+            {...listeners}
+            href={href}
+            draggable={false}
+            title={server.name}
+            className={`flex h-12 w-12 shrink-0 cursor-grab items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 active:cursor-grabbing ${isActive ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
+          >
+            {initials(server.name)}
+          </Link>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem onSelect={() => onAction('members')}>
+            <Users />
+            Members
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onAction('invite')}>
+            <UserPlus />
+            Invite people
+          </ContextMenuItem>
+          {user?.id === server.ownerId && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={() => onAction('invites')}>
+                <Ticket />
+                Active invites
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => onAction('bans')}>
+                <Ban />
+                Banned users
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => onAction('settings')}>
+                <Settings />
+                Server settings
+              </ContextMenuItem>
+            </>
+          )}
+          {user && user.id !== server.ownerId && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem variant="destructive" onSelect={() => onAction('leave')}>
+                <LogOut />
+                Leave server
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+    </div>
+  );
+}
+
 export function ServerRail() {
   const pathname = usePathname();
   const router = useRouter();
@@ -47,6 +115,7 @@ export function ServerRail() {
   const [error, setError] = useState<string | null>(null);
   const [actionServer, setActionServer] = useState<Server | null>(null);
   const [action, setAction] = useState<ServerAction | null>(null);
+  const [activeServer, setActiveServer] = useState<Server | null>(null);
 
   const { data: servers } = useQuery<Server[]>({
     queryKey: ['servers'],
@@ -67,6 +136,34 @@ export function ServerRail() {
   });
 
   const pendingCount = pending?.length ?? 0;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] } }),
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveServer(servers?.find((server) => server.id === event.active.id) ?? null);
+  };
+
+  const handleDragCancel = () => setActiveServer(null);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveServer(null);
+    const { active, over } = event;
+    if (!servers || !over || active.id === over.id) return;
+
+    const oldIndex = servers.findIndex((server) => server.id === active.id);
+    const newIndex = servers.findIndex((server) => server.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const next = arrayMove(servers, oldIndex, newIndex);
+    queryClient.setQueryData(['servers'], next);
+    reorderServers(next.map((server) => server.id)).catch((caught) => {
+      queryClient.setQueryData(['servers'], servers);
+      toast.error(apiErrorMessage(caught));
+    });
+  };
 
   const enterServer = (server: Server) => {
     queryClient.invalidateQueries({ queryKey: ['servers'] });
@@ -149,91 +246,29 @@ export function ServerRail() {
 
         <div className="h-px w-8 shrink-0 bg-sidebar-border" />
 
-        {servers?.map((server: Server) => {
-          const channel = firstChannel(server);
-          const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
-
-          return (
-            <ContextMenu key={server.id}>
-              <ContextMenuTrigger asChild>
-                <Link
-                  href={href}
-                  title={server.name}
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${route?.serverId === server.id ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
-                >
-                  {initials(server.name)}
-                </Link>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-56">
-                <ContextMenuItem
-                  onSelect={() => {
-                    setActionServer(server);
-                    setAction('members');
-                  }}
-                >
-                  <Users />
-                  Members
-                </ContextMenuItem>
-                <ContextMenuItem
-                  onSelect={() => {
-                    setActionServer(server);
-                    setAction('invite');
-                  }}
-                >
-                  <UserPlus />
-                  Invite people
-                </ContextMenuItem>
-                {user?.id === server.ownerId && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
-                      onSelect={() => {
-                        setActionServer(server);
-                        setAction('invites');
-                      }}
-                    >
-                      <Ticket />
-                      Active invites
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        setActionServer(server);
-                        setAction('bans');
-                      }}
-                    >
-                      <Ban />
-                      Banned users
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        setActionServer(server);
-                        setAction('settings');
-                      }}
-                    >
-                      <Settings />
-                      Server settings
-                    </ContextMenuItem>
-                  </>
-                )}
-                {user && user.id !== server.ownerId && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
-                      variant="destructive"
-                      onSelect={() => {
-                        setActionServer(server);
-                        setAction('leave');
-                      }}
-                    >
-                      <LogOut />
-                      Leave server
-                    </ContextMenuItem>
-                  </>
-                )}
-              </ContextMenuContent>
-            </ContextMenu>
-          );
-        })}
+        <DndContext id="server-rail" sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
+          <SortableContext items={servers?.map((server) => server.id) ?? []} strategy={verticalListSortingStrategy}>
+            {servers?.map((server: Server) => (
+              <SortableServer
+                key={server.id}
+                server={server}
+                isActive={route?.serverId === server.id}
+                user={user}
+                onAction={(nextAction) => {
+                  setActionServer(server);
+                  setAction(nextAction);
+                }}
+              />
+            ))}
+          </SortableContext>
+          <DragOverlay>
+            {activeServer && (
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground shadow-lg">
+                {initials(activeServer.name)}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
 
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger asChild>
