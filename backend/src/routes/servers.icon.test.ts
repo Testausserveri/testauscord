@@ -192,7 +192,7 @@ test('stores a static icon and returns the new version', async () => {
     const body = (await response.json()) as { iconVersion: number };
     expect(body.iconVersion).toBeGreaterThan(0);
     expect(servers[0]!.icon?.contentType).toBe('image/webp');
-    expect(updates).toEqual([{ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Testaus' }, recipientIds: [owner, member] }]);
+    expect(updates).toEqual([{ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Testaus', iconVersion: body.iconVersion }, recipientIds: [owner, member] }]);
   } finally {
     stop();
   }

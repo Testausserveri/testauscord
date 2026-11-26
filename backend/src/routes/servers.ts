@@ -501,7 +501,7 @@ app.patch('/:id', async (c) => {
 
   eventBus.publish({
     type: 'SERVER_UPDATED',
-    server: { id: server.id, name: nextName },
+    server: { id: server.id, name: nextName, iconVersion: nextIconVersion },
     recipientIds: members.map((member) => member.userId),
   });
 

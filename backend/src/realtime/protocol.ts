@@ -106,7 +106,7 @@ export type ServerFrame =
   | { type: 'MESSAGE_CREATE'; data: { message: MessageDTO } }
   | { type: 'SERVER_MEMBER_REMOVED'; data: { serverId: string; reason: 'kick' | 'ban' | 'leave' } }
   | { type: 'SERVER_MEMBER_ADDED'; data: { serverId: string } }
-  | { type: 'SERVER_UPDATED'; data: { server: { id: string; name: string } } }
+  | { type: 'SERVER_UPDATED'; data: { server: { id: string; name: string; iconVersion: number | null } } }
   | { type: 'SERVER_LAYOUT_UPDATE'; data: { serverId: string; layout: ServerLayout } }
   | { type: 'USER_UPDATED'; data: { user: UserRef } }
   | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
@@ -136,7 +136,7 @@ export const serverMemberAddedFrame = (serverId: string): ServerFrame => ({
   data: { serverId },
 });
 
-export const serverUpdatedFrame = (server: { id: string; name: string }): ServerFrame => ({
+export const serverUpdatedFrame = (server: { id: string; name: string; iconVersion: number | null }): ServerFrame => ({
   type: 'SERVER_UPDATED',
   data: { server },
 });

@@ -67,13 +67,16 @@ export function ServerMembershipEvents() {
         }
 
         if (frame.type === 'SERVER_UPDATED') {
-          const data = frame.data as { server?: { id?: unknown; name?: unknown } } | undefined;
+          const data = frame.data as { server?: { id?: unknown; name?: unknown; iconVersion?: unknown } } | undefined;
           const serverId = data?.server?.id;
           const name = data?.server?.name;
-          if (typeof serverId !== 'string' || typeof name !== 'string') return;
+          const iconVersion = data?.server?.iconVersion;
+          if (typeof serverId !== 'string' || typeof name !== 'string' || (iconVersion !== null && typeof iconVersion !== 'number')) return;
 
-          queryClient.setQueryData<Server[]>(['servers'], (servers) => servers?.map((server) => (server.id === serverId ? { ...server, name } : server)));
-          queryClient.setQueryData<ServerDetail>(['server', serverId], (detail) => (detail ? { ...detail, name } : detail));
+          const patch = { name, iconVersion };
+
+          queryClient.setQueryData<Server[]>(['servers'], (servers) => servers?.map((server) => (server.id === serverId ? { ...server, ...patch } : server)));
+          queryClient.setQueryData<ServerDetail>(['server', serverId], (detail) => (detail ? { ...detail, ...patch } : detail));
         }
       }),
     [addListener, pathname, queryClient, router],

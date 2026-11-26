@@ -60,7 +60,7 @@ test('publishes server updates with their recipients', () => {
     if (event.type === 'SERVER_UPDATED') seen.push(event.recipientIds);
   });
 
-  bus.publish({ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed' }, recipientIds: ['user-1', 'user-2'] });
+  bus.publish({ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed', iconVersion: null }, recipientIds: ['user-1', 'user-2'] });
 
   stop();
 

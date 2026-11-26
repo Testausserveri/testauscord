@@ -19,7 +19,7 @@ export type DomainEvent =
     }
   | {
       type: 'SERVER_UPDATED';
-      server: { id: string; name: string };
+      server: { id: string; name: string; iconVersion: number | null };
       recipientIds: string[];
     }
   | {

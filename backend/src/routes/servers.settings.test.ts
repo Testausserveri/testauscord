@@ -99,7 +99,7 @@ test('renames a server and notifies every member', async () => {
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ id: 'server-1', name: 'Renamed', iconVersion: null });
   expect(updates).toEqual([{ id: 'server-1', name: 'Renamed' }]);
-  expect(events).toEqual([{ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed' }, recipientIds: [owner, member] }]);
+  expect(events).toEqual([{ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed', iconVersion: null }, recipientIds: [owner, member] }]);
 });
 
 test('rejects a non-owner member', async () => {

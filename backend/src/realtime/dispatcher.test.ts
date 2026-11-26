@@ -135,9 +135,9 @@ test('dispatches server updates to every recipient and nobody else', () => {
   const stop = startDispatcher();
 
   try {
-    eventBus.publish({ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed' }, recipientIds: ['user-a', 'user-b'] });
+    eventBus.publish({ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed', iconVersion: 7 }, recipientIds: ['user-a', 'user-b'] });
 
-    const frame = JSON.stringify({ type: 'SERVER_UPDATED', data: { server: { id: 'server-1', name: 'Renamed' } } });
+    const frame = JSON.stringify({ type: 'SERVER_UPDATED', data: { server: { id: 'server-1', name: 'Renamed', iconVersion: 7 } } });
     expect(sent['user-a']).toEqual([frame]);
     expect(sent['user-b']).toEqual([frame]);
     expect(sent['user-out']).toEqual([]);
