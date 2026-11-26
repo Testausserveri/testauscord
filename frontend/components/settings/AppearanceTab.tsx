@@ -1,7 +1,10 @@
 'use client';
 
 import { useTheme } from 'next-themes';
+import { setAnimateAvatars, useAnimateAvatars } from '@/lib/avatarAnimation';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 const THEMES = [
   { value: 'light', label: 'Light' },
@@ -11,6 +14,7 @@ const THEMES = [
 
 export function AppearanceTab() {
   const { theme, setTheme } = useTheme();
+  const animateAvatars = useAnimateAvatars();
 
   return (
     <div className="flex flex-col gap-4">
@@ -27,6 +31,14 @@ export function AppearanceTab() {
             </Button>
           ))}
         </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium">Avatars</span>
+        <div className="flex items-center gap-2">
+          <Checkbox id="animate-avatars" checked={animateAvatars} onCheckedChange={(checked) => setAnimateAvatars(checked === true)} />
+          <Label htmlFor="animate-avatars">Animate avatars</Label>
+        </div>
+        <p className="text-xs text-muted-foreground">Animated avatars play on hover when this is on and your system allows motion.</p>
       </div>
     </div>
   );

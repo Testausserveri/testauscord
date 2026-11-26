@@ -205,7 +205,7 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
               const isGrouped = shouldGroupMessages(message, prevMessage);
 
               return (
-                <div key={message.id} className={`group hover:bg-muted/50 ${isGrouped ? 'px-1' : 'px-2'} py-1 rounded transition-colors ${isGrouped ? 'mt-0.5' : 'mt-4'}`}>
+                <div key={message.id} data-avatar-hover className={`group hover:bg-muted/50 ${isGrouped ? 'px-1' : 'px-2'} py-1 rounded transition-colors ${isGrouped ? 'mt-0.5' : 'mt-4'}`}>
                   {!isGrouped ? (
                     <div className="flex gap-4">
                       <button type="button" onClick={(event) => openProfile(message.sender.id, event.currentTarget)} aria-label="View profile" className="shrink-0">

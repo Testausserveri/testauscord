@@ -254,7 +254,7 @@ function IncomingRow({ request }: { request: IncomingFriendRequest }) {
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-accent">
+    <div data-avatar-hover className="flex items-center gap-3 rounded-lg p-3 hover:bg-accent">
       <button type="button" onClick={(event) => openProfile(request.sender.id, event.currentTarget)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <UserAvatar user={request.sender} className="h-8 w-8" />
         <div className="min-w-0">
@@ -299,7 +299,7 @@ function OutgoingRow({ request }: { request: OutgoingFriendRequest }) {
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg p-3 hover:bg-accent">
+    <div data-avatar-hover className="flex items-center gap-3 rounded-lg p-3 hover:bg-accent">
       <button type="button" onClick={(event) => openProfile(request.receiver.id, event.currentTarget)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <UserAvatar user={request.receiver} className="h-8 w-8" />
         <div className="min-w-0">

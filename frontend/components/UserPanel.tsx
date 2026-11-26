@@ -27,6 +27,7 @@ export function UserPanel() {
       <div className="flex items-center gap-1">
         <button
           type="button"
+          data-avatar-hover
           onClick={(event) => openProfile(user.id, event.currentTarget)}
           title="Your profile"
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

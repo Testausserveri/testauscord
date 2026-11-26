@@ -96,7 +96,7 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
           ) : (
             <>
               <div className="flex items-center gap-3 p-4">
-                <UserAvatar user={profile} className="h-14 w-14" />
+                <UserAvatar user={profile} alwaysAnimate className="h-14 w-14" />
                 <div className="min-w-0">
                   <p className="truncate text-base font-semibold">{profile.displayName ?? profile.username}</p>
                   <p className="truncate text-xs text-muted-foreground">@{profile.username}</p>

@@ -28,7 +28,7 @@ export function DirectMessage({ id }: { id: string }) {
       channelId={id}
       placeholder={`Message ${name}...`}
       header={
-        <div className="flex items-center gap-2">
+        <div data-avatar-hover className="flex items-center gap-2">
           <UserAvatar user={friend} className="h-8 w-8" />
           <h1 className="font-semibold">{name}</h1>
         </div>

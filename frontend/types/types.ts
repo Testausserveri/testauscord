@@ -14,6 +14,7 @@ export type ProfilePatch = {
   displayName?: string | null;
   bio?: string | null;
   avatar?: string | null;
+  avatarPoster?: string;
 };
 
 export type CurrentUser = ProfileDTO;

@@ -73,7 +73,7 @@ export function DmsSidebar() {
               {friends?.map((friend: Friend) => (
                 <SidebarMenuItem key={friend.friend.id}>
                   <SidebarMenuButton asChild isActive={pathname === `/channels/@me/${friend.id}`}>
-                    <Link href={`/channels/@me/${friend.id}`} className="py-5">
+                    <Link href={`/channels/@me/${friend.id}`} data-avatar-hover className="py-5">
                       <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
                       <div className="flex-1">
                         <p className="font-semibold">{friend.friend.displayName ?? friend.friend.username}</p>

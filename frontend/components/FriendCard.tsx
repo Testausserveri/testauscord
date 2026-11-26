@@ -13,7 +13,7 @@ export function FriendCard({ friend }: { friend: Friend }) {
   const name = friend.friend.displayName ?? friend.friend.username;
 
   return (
-    <div className="rounded-lg p-3 flex items-center hover:bg-accent">
+    <div data-avatar-hover className="rounded-lg p-3 flex items-center hover:bg-accent">
       <Link href={`/channels/@me/${friend.id}`} className="flex flex-1 items-center min-w-0">
         <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
         <p className="font-semibold truncate">{name}</p>
