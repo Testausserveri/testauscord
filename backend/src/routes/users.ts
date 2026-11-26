@@ -4,7 +4,7 @@ import type { Variables } from '../types/types';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
-import { decodeImageDataUrl, MAX_AVATAR_BYTES, MAX_AVATAR_DIMENSION } from '../services/images';
+import { decodeImageDataUrl, MAX_ANIMATED_DIMENSION } from '../services/images';
 import { canViewUser, type ProfileDTO } from '../services/profiles';
 import { createRateLimiter } from '../utils/rateLimit';
 import { containsBidiControls, containsControlChars, isValidUsername } from '../utils/validation';
@@ -24,6 +24,7 @@ const profilePatchSchema = z
     displayName: z.string().nullable().optional(),
     bio: z.string().nullable().optional(),
     avatar: z.string().nullable().optional(),
+    avatarPoster: z.string().optional(),
   })
   .strict()
   .refine((value) => value.username !== undefined || value.displayName !== undefined || value.bio !== undefined || value.avatar !== undefined);
@@ -48,15 +49,24 @@ const normalizeBio = (value: string | null): string | null => {
 
 const nextAvatarVersion = () => Math.floor(Math.random() * 1_000_000_000) + 1;
 
-type AvatarWrite = { clear: true } | { data: Uint8Array<ArrayBuffer>; contentType: string; version: number };
+type AvatarPoster = { data: Uint8Array<ArrayBuffer>; contentType: string };
+
+type AvatarWrite = { clear: true } | { data: Uint8Array<ArrayBuffer>; contentType: string; version: number; animated: boolean };
 
 const parseAvatar = async (value: string): Promise<AvatarWrite | null> => {
   const decoded = await decodeImageDataUrl(value);
   if (!decoded) return null;
-  if (decoded.data.length > MAX_AVATAR_BYTES) return null;
-  if (decoded.width > MAX_AVATAR_DIMENSION || decoded.height > MAX_AVATAR_DIMENSION) return null;
 
-  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}`, version: nextAvatarVersion() };
+  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}`, version: nextAvatarVersion(), animated: decoded.animated };
+};
+
+const parseAvatarPoster = async (value: string): Promise<AvatarPoster | null> => {
+  const decoded = await decodeImageDataUrl(value);
+  if (!decoded || decoded.animated) return null;
+  if (decoded.contentType !== 'webp' && decoded.contentType !== 'jpeg') return null;
+  if (decoded.width > MAX_ANIMATED_DIMENSION || decoded.height > MAX_ANIMATED_DIMENSION) return null;
+
+  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}` };
 };
 
 app.patch('/users/@me', async (c) => {
@@ -75,7 +85,7 @@ app.patch('/users/@me', async (c) => {
     return c.text('Invalid profile', 400);
   }
 
-  const { username, displayName, bio, avatar } = result.data;
+  const { username, displayName, bio, avatar, avatarPoster } = result.data;
 
   if (username !== undefined) {
     const usernameLimited = enforceRateLimit(c, usernameChangeLimiter, viewerId);
@@ -108,6 +118,25 @@ app.patch('/users/@me', async (c) => {
     return c.text('Invalid avatar', 400);
   }
 
+  let posterWrite: AvatarPoster | undefined;
+
+  if (avatarPoster !== undefined) {
+    if (avatarWrite === undefined || 'clear' in avatarWrite) {
+      return c.text('Invalid avatar poster', 400);
+    }
+
+    if (avatarWrite.animated) {
+      const poster = await parseAvatarPoster(avatarPoster);
+      if (!poster) {
+        return c.text('Invalid avatar poster', 400);
+      }
+
+      posterWrite = poster;
+    }
+  } else if (avatarWrite !== undefined && !('clear' in avatarWrite) && avatarWrite.animated) {
+    return c.text('Invalid avatar poster', 400);
+  }
+
   const data: { username?: string; displayName?: string | null; bio?: string | null; avatarVersion?: number | null } = {};
 
   if (username !== undefined) data.username = username;
@@ -121,10 +150,13 @@ app.patch('/users/@me', async (c) => {
         if ('clear' in avatarWrite) {
           await tx.avatar.deleteMany({ where: { userId: viewerId } });
         } else {
+          const posterData = posterWrite?.data ?? null;
+          const posterContentType = posterWrite?.contentType ?? null;
+
           await tx.avatar.upsert({
             where: { userId: viewerId },
-            create: { userId: viewerId, data: avatarWrite.data, contentType: avatarWrite.contentType },
-            update: { data: avatarWrite.data, contentType: avatarWrite.contentType },
+            create: { userId: viewerId, data: avatarWrite.data, contentType: avatarWrite.contentType, posterData, posterContentType },
+            update: { data: avatarWrite.data, contentType: avatarWrite.contentType, posterData, posterContentType },
           });
         }
       }
@@ -170,9 +202,10 @@ app.get('/users/:id/avatar', async (c) => {
   if (limited) return limited;
 
   const targetId = c.req.param('id');
+  const wantsStatic = c.req.query('static') === '1';
   const user = await prisma.user.findUnique({
     where: { id: targetId },
-    select: { avatarVersion: true, avatar: { select: { data: true, contentType: true } } },
+    select: { avatarVersion: true, avatar: { select: { data: true, contentType: true, posterData: true, posterContentType: true } } },
   });
 
   if (!user || !user.avatar || user.avatarVersion === null) {
@@ -183,9 +216,12 @@ app.get('/users/:id/avatar', async (c) => {
     return c.text('Avatar not found', 404);
   }
 
-  const etag = `"v${user.avatarVersion}"`;
+  const poster = wantsStatic && user.avatar.posterData && user.avatar.posterContentType ? { data: user.avatar.posterData, contentType: user.avatar.posterContentType } : null;
+  const image = poster ?? user.avatar;
+
+  const etag = `"v${user.avatarVersion}${wantsStatic ? '-static' : ''}"`;
   const headers = {
-    'Content-Type': user.avatar.contentType,
+    'Content-Type': image.contentType,
     'Cache-Control': 'private, max-age=31536000, immutable',
     'Cross-Origin-Resource-Policy': 'same-site',
     'X-Content-Type-Options': 'nosniff',
@@ -196,7 +232,7 @@ app.get('/users/:id/avatar', async (c) => {
     return c.body(null, 304, headers);
   }
 
-  return c.body(user.avatar.data, 200, headers);
+  return c.body(image.data, 200, headers);
 });
 
 app.get('/users/:id', async (c) => {
