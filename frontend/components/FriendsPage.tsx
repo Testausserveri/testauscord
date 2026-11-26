@@ -60,8 +60,6 @@ function AddFriendForm() {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const { data: friends } = useQuery<Friend[]>({
     queryKey: ['friends'],
@@ -88,31 +86,28 @@ function AddFriendForm() {
     event.preventDefault();
     if (!valid || busy) return;
 
-    setMessage(null);
-    setError(null);
-
     if (friends?.some((entry) => entry.friend.username === label)) {
-      setMessage(`You are already friends with @${label}`);
+      toast.info(`You are already friends with @${label}`);
       return;
     }
 
     if (pending?.some((entry) => entry.sender.username === label)) {
-      setMessage(`@${label} already sent you a friend request. Check Pending to accept it.`);
+      toast.info(`@${label} already sent you a friend request. Check Pending to accept it.`);
       return;
     }
 
     if (sent?.some((entry) => entry.receiver.username === label)) {
-      setMessage(`You already have a pending request to @${label}`);
+      toast.info(`You already have a pending request to @${label}`);
       return;
     }
 
     setBusy(true);
     try {
-      setMessage(await sendFriendRequest(label));
+      toast.success(await sendFriendRequest(label));
       setUsername('');
       void queryClient.invalidateQueries({ queryKey: ['friend-requests-sent'] });
     } catch (caught) {
-      setError(apiErrorMessage(caught));
+      toast.error(apiErrorMessage(caught));
     } finally {
       setBusy(false);
     }
@@ -128,8 +123,6 @@ function AddFriendForm() {
           Send Friend Request
         </Button>
       </div>
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
-      {error && <p className="text-sm text-destructive">{error}</p>}
     </form>
   );
 }
