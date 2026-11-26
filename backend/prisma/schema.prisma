@@ -97,12 +97,14 @@ model ServerMember {
   serverId String
   userId String
   joinedAt DateTime @default(now())
+  position Int @default(0)
 
   server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, userId])
   @@index([userId])
+  @@index([userId, position])
 }
 
 model ServerBan {

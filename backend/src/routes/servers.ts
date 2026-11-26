@@ -9,6 +9,7 @@ import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../rea
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
 import { planCategoryDelete, planChannelAssign, nextPosition } from '../services/serverLayout';
+import { nextServerPosition } from '../services/serverOrder';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
@@ -24,6 +25,7 @@ const channelAssignLimiter = createRateLimiter(60, 60_000);
 const categoryMutationLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
 const moderationLimiter = createRateLimiter(30, 60_000);
+const serverOrderLimiter = createRateLimiter(60, 60_000);
 
 const MAX_SERVER_MEMBERSHIPS = 200;
 const MAX_CHANNELS_PER_SERVER = 50;
@@ -130,13 +132,15 @@ app.post('/create', async (c) => {
     return c.text('Server limit reached', 409);
   }
 
+  const position = await nextServerPosition(userId);
+
   const server = await prisma.server.create({
     data: {
       id: generateId(),
       name: result.data.name,
       ownerId: userId,
       members: {
-        create: { id: generateId(), userId },
+        create: { id: generateId(), userId, position },
       },
       channels: {
         create: { id: generateId(), name: 'general', type: 'TEXT' },
@@ -153,13 +157,58 @@ app.get('/', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const servers = await prisma.server.findMany({
-    where: { members: { some: { userId: c.get('user')!.id } }, bans: { none: { userId: c.get('user')!.id } } },
-    select: serverSelect,
-    orderBy: { createdAt: 'asc' },
+  const userId = c.get('user')!.id;
+
+  const memberships = await prisma.serverMember.findMany({
+    where: { userId, server: { bans: { none: { userId } } } },
+    orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }, { id: 'asc' }],
+    select: { server: { select: serverSelect } },
   });
 
-  return c.json(servers, 200);
+  return c.json(
+    memberships.map((membership) => membership.server),
+    200,
+  );
+});
+
+app.put('/order', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverOrderLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z
+    .array(z.string().min(1).max(64))
+    .max(MAX_SERVER_MEMBERSHIPS)
+    .refine((serverIds) => new Set(serverIds).size === serverIds.length)
+    .safeParse((body as { serverIds?: unknown } | null)?.serverIds);
+
+  if (!result.success) {
+    return c.text('Invalid server order', 400);
+  }
+
+  const serverIds = result.data;
+
+  const memberships = await prisma.serverMember.findMany({
+    where: { userId, server: { bans: { none: { userId } } } },
+    select: { id: true, serverId: true },
+  });
+
+  const membershipByServer = new Map(memberships.map((membership) => [membership.serverId, membership.id]));
+
+  if (serverIds.length !== memberships.length || serverIds.some((serverId) => !membershipByServer.has(serverId))) {
+    return c.text('Invalid server order', 400);
+  }
+
+  if (serverIds.length > 0) {
+    await prisma.$transaction(serverIds.map((serverId, index) => prisma.serverMember.update({ where: { id: membershipByServer.get(serverId)! }, data: { position: index } })));
+  }
+
+  return c.body(null, 204);
 });
 
 app.post('/join', async (c) => {
@@ -211,9 +260,11 @@ app.post('/join', async (c) => {
     return c.text('Server limit reached', 409);
   }
 
+  const position = await nextServerPosition(userId);
+
   try {
     await prisma.serverMember.create({
-      data: { id: generateId(), serverId: invite.serverId, userId },
+      data: { id: generateId(), serverId: invite.serverId, userId, position },
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
