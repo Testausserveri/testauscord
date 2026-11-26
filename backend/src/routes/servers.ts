@@ -8,7 +8,7 @@ import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
-import { planCategoryDelete, planChannelAssign, nextPosition } from '../services/serverLayout';
+import { planCategoryDelete, planChannelAssign, planLayout, nextPosition } from '../services/serverLayout';
 import { nextServerPosition } from '../services/serverOrder';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
@@ -22,6 +22,7 @@ const serverJoinLimiter = createRateLimiter(30, 60_000);
 const serverRenameLimiter = createRateLimiter(10, 60 * 60_000);
 const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
 const channelAssignLimiter = createRateLimiter(60, 60_000);
+const serverLayoutLimiter = createRateLimiter(60, 60_000);
 const categoryMutationLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
 const moderationLimiter = createRateLimiter(30, 60_000);
@@ -41,6 +42,18 @@ const channelNameSchema = z
   .min(1)
   .max(32)
   .regex(/^[a-z0-9-]+$/, 'Invalid channel name');
+
+const layoutSchema = z.object({
+  categories: z.array(z.string().min(1).max(64)).max(MAX_CATEGORIES_PER_SERVER),
+  groups: z
+    .array(
+      z.object({
+        categoryId: z.string().min(1).max(64).nullable(),
+        channelIds: z.array(z.string().min(1).max(64)).max(MAX_CHANNELS_PER_SERVER),
+      }),
+    )
+    .max(MAX_CATEGORIES_PER_SERVER + 1),
+});
 
 const categorySelect = { id: true, name: true, position: true } as const;
 
@@ -99,6 +112,8 @@ const publishServerLayout = async (serverId: string) => {
     layout: { categories, channels },
     recipientIds: members.map((member) => member.userId),
   });
+
+  return { categories, channels };
 };
 
 const isUniqueConstraintError = (error: unknown): boolean => {
@@ -313,6 +328,55 @@ app.get('/:id', async (c) => {
     },
     200,
   );
+});
+
+app.put('/:id/layout', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverLayoutLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = layoutSchema.safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid layout', 400);
+  }
+
+  const server = await findManageableServer(c.req.param('id'), userId);
+
+  if (!server) {
+    return c.text('Server not found', 404);
+  }
+
+  if (!isServerOwner(server, userId)) {
+    return c.text('Only the server owner can manage the layout', 403);
+  }
+
+  const [categories, channels] = await Promise.all([
+    prisma.channelCategory.findMany({ where: { serverId: server.id }, select: { id: true, position: true } }),
+    prisma.channel.findMany({ where: { serverId: server.id }, select: { id: true, categoryId: true, position: true } }),
+  ]);
+
+  const plan = planLayout(categories, channels, result.data);
+
+  if (!plan) {
+    return c.text('Invalid layout', 400);
+  }
+
+  if (plan.categories.length > 0 || plan.channels.length > 0) {
+    await prisma.$transaction([
+      ...plan.categories.map((entry) => prisma.channelCategory.update({ where: { id: entry.id }, data: { position: entry.position } })),
+      ...plan.channels.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: entry.categoryId, position: entry.position } })),
+    ]);
+  }
+
+  const layout = await publishServerLayout(server.id);
+
+  return c.json(layout, 200);
 });
 
 app.patch('/:id', async (c) => {
