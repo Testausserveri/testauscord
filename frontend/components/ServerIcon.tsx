@@ -14,8 +14,20 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-export function ServerIcon({ server, className, src, static: forceStatic = false }: { server: Pick<Server, 'id' | 'name' | 'iconVersion'>; className?: string; src?: string; static?: boolean }) {
-  const { rootRef, active } = useHoverAnimation<HTMLSpanElement>();
+export function ServerIcon({
+  server,
+  className,
+  src,
+  alwaysAnimate = false,
+  static: forceStatic = false,
+}: {
+  server: Pick<Server, 'id' | 'name' | 'iconVersion'>;
+  className?: string;
+  src?: string;
+  alwaysAnimate?: boolean;
+  static?: boolean;
+}) {
+  const { rootRef, active } = useHoverAnimation<HTMLSpanElement>(alwaysAnimate);
   const animateAvatars = useAnimateAvatars();
   const reducedMotion = useReducedMotion();
   const [failedSrc, setFailedSrc] = useState<string | null>(null);

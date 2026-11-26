@@ -47,7 +47,7 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
             title={server.name}
             className={`flex h-12 w-12 shrink-0 cursor-grab items-center justify-center overflow-hidden rounded-2xl bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 active:cursor-grabbing ${isActive ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
           >
-            <ServerIcon server={server} />
+            <ServerIcon server={server} alwaysAnimate={isActive} />
           </Link>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
