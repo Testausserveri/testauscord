@@ -104,3 +104,91 @@ export const decodeImageDataUrl = async (value: string): Promise<{ data: Uint8Ar
 
   return { data, ...info };
 };
+
+export type ParsedImage = { data: Uint8Array<ArrayBuffer>; contentType: string; width: number; height: number; animated: boolean; frames: number };
+
+export type ParsedPoster = { data: Uint8Array<ArrayBuffer>; contentType: string };
+
+export const parseImage = async (value: string): Promise<ParsedImage | null> => {
+  const decoded = await decodeImageDataUrl(value);
+  if (!decoded) return null;
+
+  return {
+    data: new Uint8Array(decoded.data),
+    contentType: `image/${decoded.contentType}`,
+    width: decoded.width,
+    height: decoded.height,
+    animated: decoded.animated,
+    frames: decoded.frames,
+  };
+};
+
+export const parsePoster = async (value: string): Promise<ParsedPoster | null> => {
+  const decoded = await decodeImageDataUrl(value);
+  if (!decoded || decoded.animated) return null;
+  if (decoded.contentType !== 'webp' && decoded.contentType !== 'jpeg') return null;
+  if (decoded.width > MAX_ANIMATED_DIMENSION || decoded.height > MAX_ANIMATED_DIMENSION) return null;
+
+  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}` };
+};
+
+export const nextImageVersion = () => Math.floor(Math.random() * 1_000_000_000) + 1;
+
+export type ImagePatch = { clear: true } | (ParsedImage & { version: number });
+
+export type ImageUpdate = { image?: ImagePatch; poster?: ParsedPoster };
+
+export type ImageUpdateResult = { ok: true; update: ImageUpdate } | { ok: false; error: 'image' | 'poster' };
+
+export const parseImageUpdate = async (image: string | null | undefined, poster: string | undefined): Promise<ImageUpdateResult> => {
+  if (image === undefined) {
+    return poster === undefined ? { ok: true, update: {} } : { ok: false, error: 'poster' };
+  }
+
+  if (image === null) {
+    return poster === undefined ? { ok: true, update: { image: { clear: true } } } : { ok: false, error: 'poster' };
+  }
+
+  const parsed = await parseImage(image);
+  if (!parsed) return { ok: false, error: 'image' };
+
+  const imagePatch: ImagePatch = { ...parsed, version: nextImageVersion() };
+
+  if (poster === undefined) {
+    return imagePatch.animated ? { ok: false, error: 'poster' } : { ok: true, update: { image: imagePatch } };
+  }
+
+  if (!imagePatch.animated) return { ok: true, update: { image: imagePatch } };
+
+  const parsedPoster = await parsePoster(poster);
+  if (!parsedPoster) return { ok: false, error: 'poster' };
+
+  return { ok: true, update: { image: imagePatch, poster: parsedPoster } };
+};
+
+export type StoredImage = { data: Uint8Array<ArrayBuffer>; contentType: string; posterData?: Uint8Array<ArrayBuffer> | null; posterContentType?: string | null };
+
+export const imageColumns = (image: ParsedImage, poster: ParsedPoster | undefined) => ({
+  data: image.data,
+  contentType: image.contentType,
+  posterData: poster?.data ?? null,
+  posterContentType: poster?.contentType ?? null,
+});
+
+export const imageResponse = (image: StoredImage, version: number, wantsStatic: boolean) => {
+  const poster = wantsStatic && image.posterData && image.posterContentType ? { data: image.posterData, contentType: image.posterContentType } : null;
+  const variant = poster ?? image;
+  const etag = `"v${version}${wantsStatic ? '-static' : ''}"`;
+
+  return {
+    data: variant.data,
+    etag,
+    headers: {
+      'Content-Type': variant.contentType,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'Cross-Origin-Resource-Policy': 'same-site',
+      'X-Content-Type-Options': 'nosniff',
+      ETag: etag,
+    },
+  };
+};

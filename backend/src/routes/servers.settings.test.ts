@@ -4,7 +4,7 @@ import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
 type Member = { userId: string };
-type Row = { id: string; name: string; ownerId: string; members: Member[] };
+type Row = { id: string; name: string; ownerId: string; iconVersion: number | null; members: Member[] };
 
 let servers: Row[] = [];
 let updates: { id: string; name: string }[] = [];
@@ -18,7 +18,7 @@ const findFirst = mock(async ({ where }: { where: { id: string; members?: { some
   const memberId = where.members?.some.userId;
   if (memberId !== undefined && !server.members.some((member) => member.userId === memberId)) return null;
 
-  return { id: server.id, name: server.name, ownerId: server.ownerId };
+  return { id: server.id, name: server.name, ownerId: server.ownerId, iconVersion: server.iconVersion };
 });
 
 const update = mock(async ({ where, data }: { where: { id: string }; data: { name: string } }) => {
@@ -27,7 +27,7 @@ const update = mock(async ({ where, data }: { where: { id: string }; data: { nam
 
   server.name = data.name;
   updates.push({ id: server.id, name: data.name });
-  return { id: server.id, name: server.name };
+  return { id: server.id, name: server.name, iconVersion: server.iconVersion };
 });
 
 const findMany = mock(async ({ where }: { where: { serverId: string } }) => servers.find((entry) => entry.id === where.serverId)?.members ?? []);
@@ -80,7 +80,7 @@ const rename = (target: Hono<{ Variables: Variables }>, id: string, body: unknow
   });
 
 beforeEach(() => {
-  servers = [{ id: 'server-1', name: 'Testaus', ownerId: owner, members: [{ userId: owner }, { userId: member }] }];
+  servers = [{ id: 'server-1', name: 'Testaus', ownerId: owner, iconVersion: null, members: [{ userId: owner }, { userId: member }] }];
   updates = [];
   events = [];
   stopEvents = eventBus.subscribe((event) => events.push(event));
@@ -97,7 +97,7 @@ test('renames a server and notifies every member', async () => {
   const response = await rename(app, 'server-1', { name: '  Renamed  ' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'server-1', name: 'Renamed' });
+  expect(await response.json()).toEqual({ id: 'server-1', name: 'Renamed', iconVersion: null });
   expect(updates).toEqual([{ id: 'server-1', name: 'Renamed' }]);
   expect(events).toEqual([{ type: 'SERVER_UPDATED', server: { id: 'server-1', name: 'Renamed' }, recipientIds: [owner, member] }]);
 });
@@ -135,7 +135,7 @@ test('rejects invalid names', async () => {
 });
 
 test('allows duplicate server names', async () => {
-  servers.push({ id: 'server-2', name: 'Renamed', ownerId: outsider, members: [{ userId: outsider }] });
+  servers.push({ id: 'server-2', name: 'Renamed', ownerId: outsider, iconVersion: null, members: [{ userId: outsider }] });
 
   const response = await rename(app, 'server-1', { name: 'Renamed' });
 
@@ -152,7 +152,7 @@ test('treats the same name as a no-op', async () => {
 });
 
 test('throttles renames per user after 10 requests', async () => {
-  servers.push({ id: 'server-throttle', name: 'Before', ownerId: throttled, members: [{ userId: throttled }] });
+  servers.push({ id: 'server-throttle', name: 'Before', ownerId: throttled, iconVersion: null, members: [{ userId: throttled }] });
 
   const statuses: number[] = [];
   let last: Response | undefined;

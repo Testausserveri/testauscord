@@ -4,7 +4,7 @@ import type { Variables } from '../types/types';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
-import { decodeImageDataUrl, MAX_ANIMATED_DIMENSION } from '../services/images';
+import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
 import { canViewUser, type ProfileDTO } from '../services/profiles';
 import { createRateLimiter } from '../utils/rateLimit';
 import { containsBidiControls, containsControlChars, isValidUsername } from '../utils/validation';
@@ -45,28 +45,6 @@ const normalizeBio = (value: string | null): string | null => {
 
   const normalized = value.replace(/\r\n/g, '\n').trimEnd();
   return normalized.length === 0 ? null : normalized;
-};
-
-const nextAvatarVersion = () => Math.floor(Math.random() * 1_000_000_000) + 1;
-
-type AvatarPoster = { data: Uint8Array<ArrayBuffer>; contentType: string };
-
-type AvatarWrite = { clear: true } | { data: Uint8Array<ArrayBuffer>; contentType: string; version: number; animated: boolean };
-
-const parseAvatar = async (value: string): Promise<AvatarWrite | null> => {
-  const decoded = await decodeImageDataUrl(value);
-  if (!decoded) return null;
-
-  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}`, version: nextAvatarVersion(), animated: decoded.animated };
-};
-
-const parseAvatarPoster = async (value: string): Promise<AvatarPoster | null> => {
-  const decoded = await decodeImageDataUrl(value);
-  if (!decoded || decoded.animated) return null;
-  if (decoded.contentType !== 'webp' && decoded.contentType !== 'jpeg') return null;
-  if (decoded.width > MAX_ANIMATED_DIMENSION || decoded.height > MAX_ANIMATED_DIMENSION) return null;
-
-  return { data: new Uint8Array(decoded.data), contentType: `image/${decoded.contentType}` };
 };
 
 app.patch('/users/@me', async (c) => {
@@ -112,30 +90,14 @@ app.patch('/users/@me', async (c) => {
     }
   }
 
-  const avatarWrite = avatar === undefined ? undefined : avatar === null ? ({ clear: true } as const) : await parseAvatar(avatar);
+  const avatarUpdate = await parseImageUpdate(avatar, avatarPoster);
 
-  if (avatarWrite === null) {
-    return c.text('Invalid avatar', 400);
+  if (!avatarUpdate.ok) {
+    return c.text(avatarUpdate.error === 'image' ? 'Invalid avatar' : 'Invalid avatar poster', 400);
   }
 
-  let posterWrite: AvatarPoster | undefined;
-
-  if (avatarPoster !== undefined) {
-    if (avatarWrite === undefined || 'clear' in avatarWrite) {
-      return c.text('Invalid avatar poster', 400);
-    }
-
-    if (avatarWrite.animated) {
-      const poster = await parseAvatarPoster(avatarPoster);
-      if (!poster) {
-        return c.text('Invalid avatar poster', 400);
-      }
-
-      posterWrite = poster;
-    }
-  } else if (avatarWrite !== undefined && !('clear' in avatarWrite) && avatarWrite.animated) {
-    return c.text('Invalid avatar poster', 400);
-  }
+  const avatarWrite = avatarUpdate.update.image;
+  const posterWrite = avatarUpdate.update.poster;
 
   const data: { username?: string; displayName?: string | null; bio?: string | null; avatarVersion?: number | null } = {};
 
@@ -150,13 +112,12 @@ app.patch('/users/@me', async (c) => {
         if ('clear' in avatarWrite) {
           await tx.avatar.deleteMany({ where: { userId: viewerId } });
         } else {
-          const posterData = posterWrite?.data ?? null;
-          const posterContentType = posterWrite?.contentType ?? null;
+          const columns = imageColumns(avatarWrite, posterWrite);
 
           await tx.avatar.upsert({
             where: { userId: viewerId },
-            create: { userId: viewerId, data: avatarWrite.data, contentType: avatarWrite.contentType, posterData, posterContentType },
-            update: { data: avatarWrite.data, contentType: avatarWrite.contentType, posterData, posterContentType },
+            create: { userId: viewerId, ...columns },
+            update: columns,
           });
         }
       }
@@ -216,23 +177,13 @@ app.get('/users/:id/avatar', async (c) => {
     return c.text('Avatar not found', 404);
   }
 
-  const poster = wantsStatic && user.avatar.posterData && user.avatar.posterContentType ? { data: user.avatar.posterData, contentType: user.avatar.posterContentType } : null;
-  const image = poster ?? user.avatar;
-
-  const etag = `"v${user.avatarVersion}${wantsStatic ? '-static' : ''}"`;
-  const headers = {
-    'Content-Type': image.contentType,
-    'Cache-Control': 'private, max-age=31536000, immutable',
-    'Cross-Origin-Resource-Policy': 'same-site',
-    'X-Content-Type-Options': 'nosniff',
-    ETag: etag,
-  };
+  const { data, etag, headers } = imageResponse(user.avatar, user.avatarVersion, wantsStatic);
 
   if (c.req.header('if-none-match') === etag) {
     return c.body(null, 304, headers);
   }
 
-  return c.body(image.data, 200, headers);
+  return c.body(data, 200, headers);
 });
 
 app.get('/users/:id', async (c) => {

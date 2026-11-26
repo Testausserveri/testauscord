@@ -9,6 +9,7 @@ import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../rea
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
 import { planCategoryDelete, planChannelAssign, planLayout, nextPosition, type ChannelPlacement } from '../services/serverLayout';
+import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
 import { nextServerPosition } from '../services/serverOrder';
 import type { Variables } from '../types/types';
 import { createRateLimiter } from '../utils/rateLimit';
@@ -20,6 +21,7 @@ const inviteLimiter = createRateLimiter(10, 60_000);
 const serverCreateLimiter = createRateLimiter(10, 60 * 60_000);
 const serverJoinLimiter = createRateLimiter(30, 60_000);
 const serverRenameLimiter = createRateLimiter(10, 60 * 60_000);
+const serverIconLimiter = createRateLimiter(300, 60_000);
 const channelCreateLimiter = createRateLimiter(30, 60 * 60_000);
 const channelAssignLimiter = createRateLimiter(60, 60_000);
 const serverLayoutLimiter = createRateLimiter(60, 60_000);
@@ -55,6 +57,14 @@ const layoutSchema = z.object({
     .max(MAX_CATEGORIES_PER_SERVER + 1),
 });
 
+const serverPatchSchema = z
+  .object({
+    name: serverNameSchema.optional(),
+    icon: z.string().nullable().optional(),
+    iconPoster: z.string().optional(),
+  })
+  .refine((value) => value.name !== undefined || value.icon !== undefined);
+
 const categorySelect = { id: true, name: true, position: true } as const;
 
 const findManageableServer = (serverId: string, userId: string) =>
@@ -79,6 +89,7 @@ const evictServerMember = (serverId: string, userId: string, channels: { id: str
 const serverSelect = {
   id: true,
   name: true,
+  iconVersion: true,
   ownerId: true,
   createdAt: true,
   channels: {
@@ -330,6 +341,34 @@ app.get('/:id', async (c) => {
   );
 });
 
+app.get('/:id/icon', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, serverIconLimiter, userId);
+  if (limited) return limited;
+
+  const wantsStatic = c.req.query('static') === '1';
+  const server = await prisma.server.findFirst({
+    where: { id: c.req.param('id'), members: { some: { userId } }, bans: { none: { userId } } },
+    select: { iconVersion: true, icon: { select: { data: true, contentType: true, posterData: true, posterContentType: true } } },
+  });
+
+  if (!server || !server.icon || server.iconVersion === null) {
+    return c.text('Server icon not found', 404);
+  }
+
+  const { data, etag, headers } = imageResponse(server.icon, server.iconVersion, wantsStatic);
+
+  if (c.req.header('if-none-match') === etag) {
+    return c.body(null, 304, headers);
+  }
+
+  return c.body(data, 200, headers);
+});
+
 app.put('/:id/layout', async (c) => {
   if (!c.get('user') || !c.get('session')) {
     return c.text('This endpoint requires authentication', 401);
@@ -389,15 +428,17 @@ app.patch('/:id', async (c) => {
   if (limited) return limited;
 
   const body = await c.req.json().catch(() => null);
-  const result = z.object({ name: serverNameSchema }).safeParse(body);
+  const result = serverPatchSchema.safeParse(body);
 
   if (!result.success) {
-    return c.text('Invalid server name', 400);
+    return c.text('Invalid server update', 400);
   }
+
+  const { name, icon, iconPoster } = result.data;
 
   const server = await prisma.server.findFirst({
     where: { id: c.req.param('id'), members: { some: { userId } } },
-    select: { id: true, name: true, ownerId: true },
+    select: { id: true, name: true, ownerId: true, iconVersion: true },
   });
 
   if (!server) {
@@ -405,13 +446,23 @@ app.patch('/:id', async (c) => {
   }
 
   if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can rename this server', 403);
+    return c.text('Only the server owner can edit this server', 403);
   }
 
-  const name = result.data.name;
+  const iconUpdate = await parseImageUpdate(icon, iconPoster);
 
-  if (name === server.name) {
-    return c.json({ id: server.id, name }, 200);
+  if (!iconUpdate.ok) {
+    return c.text(iconUpdate.error === 'image' ? 'Invalid server icon' : 'Invalid server icon poster', 400);
+  }
+
+  const iconWrite = iconUpdate.update.image;
+  const posterWrite = iconUpdate.update.poster;
+
+  const renaming = name !== undefined && name !== server.name;
+  const changingIcon = iconWrite !== undefined;
+
+  if (!renaming && !changingIcon) {
+    return c.json({ id: server.id, name: server.name, iconVersion: server.iconVersion }, 200);
   }
 
   const members = await prisma.serverMember.findMany({
@@ -419,18 +470,42 @@ app.patch('/:id', async (c) => {
     select: { userId: true },
   });
 
-  await prisma.server.update({
-    where: { id: server.id },
-    data: { name },
-  });
+  const nextName = renaming ? name : server.name;
+  const nextIconVersion = iconWrite === undefined ? server.iconVersion : 'clear' in iconWrite ? null : iconWrite.version;
+
+  if (iconWrite !== undefined) {
+    await prisma.$transaction(async (tx) => {
+      if ('clear' in iconWrite) {
+        await tx.serverIcon.deleteMany({ where: { serverId: server.id } });
+      } else {
+        const columns = imageColumns(iconWrite, posterWrite);
+
+        await tx.serverIcon.upsert({
+          where: { serverId: server.id },
+          create: { serverId: server.id, ...columns },
+          update: columns,
+        });
+      }
+
+      return tx.server.update({
+        where: { id: server.id },
+        data: { ...(renaming ? { name } : {}), iconVersion: nextIconVersion },
+      });
+    });
+  } else {
+    await prisma.server.update({
+      where: { id: server.id },
+      data: { name },
+    });
+  }
 
   eventBus.publish({
     type: 'SERVER_UPDATED',
-    server: { id: server.id, name },
+    server: { id: server.id, name: nextName },
     recipientIds: members.map((member) => member.userId),
   });
 
-  return c.json({ id: server.id, name }, 200);
+  return c.json({ id: server.id, name: nextName, iconVersion: nextIconVersion }, 200);
 });
 
 app.post('/:id/categories', async (c) => {

@@ -59,6 +59,7 @@ model Server {
   id String @id
   name String
   ownerId String
+  iconVersion Int?
   createdAt DateTime @default(now())
 
   owner User @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -67,6 +68,18 @@ model Server {
   categories ChannelCategory[]
   invites ServerInvite[]
   bans ServerBan[]
+  icon ServerIcon?
+}
+
+model ServerIcon {
+  serverId          String   @id
+  data              Bytes
+  contentType       String
+  posterData        Bytes?
+  posterContentType String?
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
 }
 
 model ChannelCategory {
