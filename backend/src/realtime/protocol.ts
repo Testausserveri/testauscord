@@ -108,6 +108,7 @@ export type ServerFrame =
   | { type: 'SERVER_MEMBER_ADDED'; data: { serverId: string } }
   | { type: 'SERVER_UPDATED'; data: { server: { id: string; name: string; iconVersion: number | null } } }
   | { type: 'SERVER_LAYOUT_UPDATE'; data: { serverId: string; layout: ServerLayout } }
+  | { type: 'SERVER_ACCESS_UPDATE'; data: { serverId: string } }
   | { type: 'USER_UPDATED'; data: { user: UserRef } }
   | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
   | { type: 'FRIEND_REQUEST_REMOVE'; data: { requestId: string; reason: FriendRequestRemoveReason } }
@@ -145,6 +146,11 @@ export const serverUpdatedFrame = (server: { id: string; name: string; iconVersi
 export const serverLayoutUpdateFrame = (serverId: string, layout: ServerLayout): ServerFrame => ({
   type: 'SERVER_LAYOUT_UPDATE',
   data: { serverId, layout },
+});
+
+export const serverAccessUpdateFrame = (serverId: string): ServerFrame => ({
+  type: 'SERVER_ACCESS_UPDATE',
+  data: { serverId },
 });
 
 export const userUpdatedFrame = (user: UserRef): ServerFrame => ({

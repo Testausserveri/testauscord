@@ -66,6 +66,15 @@ export function ServerMembershipEvents() {
           queryClient.setQueryData<ServerDetail>(['server', serverId], (detail) => (detail ? { ...detail, ...next } : detail));
         }
 
+        if (frame.type === 'SERVER_ACCESS_UPDATE') {
+          const serverId = (frame.data as { serverId?: unknown } | undefined)?.serverId;
+          if (typeof serverId !== 'string') return;
+
+          void queryClient.invalidateQueries({ queryKey: ['servers'] });
+          void queryClient.invalidateQueries({ queryKey: ['server', serverId] });
+          return;
+        }
+
         if (frame.type === 'SERVER_UPDATED') {
           const data = frame.data as { server?: { id?: unknown; name?: unknown; iconVersion?: unknown } } | undefined;
           const serverId = data?.server?.id;

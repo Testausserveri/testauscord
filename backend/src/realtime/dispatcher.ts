@@ -5,6 +5,7 @@ import {
   friendRequestCreateFrame,
   friendRequestRemoveFrame,
   messageCreateFrame,
+  serverAccessUpdateFrame,
   serverLayoutUpdateFrame,
   serverMemberAddedFrame,
   serverMemberRemovedFrame,
@@ -27,6 +28,10 @@ const dispatch = (event: DomainEvent): void => {
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   } else if (event.type === 'SERVER_LAYOUT_UPDATE') {
     const payload = JSON.stringify(serverLayoutUpdateFrame(event.serverId, event.layout));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'SERVER_ACCESS_UPDATE') {
+    const payload = JSON.stringify(serverAccessUpdateFrame(event.serverId));
 
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   } else if (event.type === 'USER_UPDATED') {

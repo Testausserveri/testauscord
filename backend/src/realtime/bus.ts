@@ -29,6 +29,11 @@ export type DomainEvent =
       recipientIds: string[];
     }
   | {
+      type: 'SERVER_ACCESS_UPDATE';
+      serverId: string;
+      recipientIds: string[];
+    }
+  | {
       type: 'USER_UPDATED';
       user: UserRef;
       recipientIds: string[];

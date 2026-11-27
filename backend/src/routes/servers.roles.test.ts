@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
 type ServerRow = { id: string; ownerId: string };
@@ -30,6 +31,8 @@ let roles: RoleRow[] = [];
 let assignments: AssignmentRow[] = [];
 let bans: BanRow[] = [];
 let idCounter = 0;
+let events: DomainEvent[] = [];
+let stopEvents: (() => void) | null = null;
 
 const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
 
@@ -85,6 +88,8 @@ const findMember = mock(async ({ where }: { where: { serverId_userId: { serverId
 
   return member ? { id: member.id } : null;
 });
+
+const findMembers = mock(async ({ where }: { where: { serverId: string } }) => members.filter((member) => member.serverId === where.serverId).map((member) => ({ userId: member.userId })));
 
 const findRole = mock(async ({ where }: { where: RoleWhere }) => roles.find((role) => matchesWhere(role, where)) ?? null);
 
@@ -150,7 +155,7 @@ const transaction = async (arg: unknown) => {
 
 mock.module('../db', () => ({
   prisma: {
-    serverMember: { findFirst: findAccessMember, findUnique: findMember },
+    serverMember: { findFirst: findAccessMember, findUnique: findMember, findMany: findMembers },
     role: { findFirst: findRole, findMany: findRoles, create: createRole, update: updateRole, delete: deleteRole },
     memberRole: { deleteMany: deleteAssignments, createMany: createAssignments },
     $transaction: transaction,
@@ -233,8 +238,11 @@ beforeEach(() => {
   assignments = [];
   bans = [];
   idCounter = 0;
+  events = [];
+  stopEvents = eventBus.subscribe((event) => events.push(event));
   findAccessMember.mockClear();
   findMember.mockClear();
+  findMembers.mockClear();
   findRole.mockClear();
   findRoles.mockClear();
   createRole.mockClear();
@@ -243,6 +251,11 @@ beforeEach(() => {
   deleteAssignments.mockClear();
   createAssignments.mockClear();
   queryRaw.mockClear();
+});
+
+afterEach(() => {
+  stopEvents?.();
+  stopEvents = null;
 });
 
 afterAll(() => mock.restore());
@@ -564,4 +577,21 @@ test('caps a server at 25 roles including @everyone', async () => {
   }
 
   expect((await post(createApp(ownerId), `/${serverId}/roles`, { name: 'Overflow' })).status).toBe(409);
+});
+
+test('publishes access updates after every role mutation', async () => {
+  const { serverId, ownerId, memberId } = seedServer('access-events');
+  const app = createApp(ownerId);
+
+  const created = await post(app, `/${serverId}/roles`, { name: 'Mod' });
+  expect(created.status).toBe(201);
+  const role = (await created.json()) as { id: string };
+
+  expect((await patch(app, `/${serverId}/roles/${role.id}`, { color: 0x123456 })).status).toBe(200);
+  expect((await put(app, `/${serverId}/roles/order`, { roleIds: [role.id] })).status).toBe(200);
+  expect((await put(app, `/${serverId}/members/${memberId}/roles`, { roleIds: [role.id] })).status).toBe(204);
+  expect((await del(app, `/${serverId}/roles/${role.id}`)).status).toBe(204);
+
+  const event: DomainEvent = { type: 'SERVER_ACCESS_UPDATE', serverId, recipientIds: [ownerId, memberId, 'other-access-events'] };
+  expect(events).toEqual([event, event, event, event, event]);
 });

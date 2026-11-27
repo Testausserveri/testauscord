@@ -150,6 +150,16 @@ const publishServerLayout = async (serverId: string) => {
   return { categories, channels };
 };
 
+const publishServerAccessUpdate = async (serverId: string) => {
+  const members = await prisma.serverMember.findMany({ where: { serverId }, select: { userId: true } });
+
+  eventBus.publish({
+    type: 'SERVER_ACCESS_UPDATE',
+    serverId,
+    recipientIds: members.map((member) => member.userId),
+  });
+};
+
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 };
@@ -667,6 +677,8 @@ app.post('/:id/roles', async (c) => {
       return c.text('Role limit reached', 409);
     }
 
+    await publishServerAccessUpdate(serverId);
+
     return c.json(outcome.role, 201);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -757,6 +769,8 @@ app.patch('/:id/roles/:roleId', async (c) => {
       select: roleSelect,
     });
 
+    await publishServerAccessUpdate(serverId);
+
     return c.json(updated, 200);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -810,6 +824,8 @@ app.delete('/:id/roles/:roleId', async (c) => {
     }
     throw error;
   }
+
+  await publishServerAccessUpdate(serverId);
 
   return c.body(null, 204);
 });
@@ -878,6 +894,8 @@ app.put('/:id/roles/order', async (c) => {
     select: roleSelect,
     orderBy: { position: 'asc' },
   });
+
+  await publishServerAccessUpdate(serverId);
 
   return c.json(ordered, 200);
 });
@@ -961,6 +979,8 @@ app.put('/:id/members/:userId/roles', async (c) => {
     prisma.memberRole.deleteMany({ where: { serverMemberId: membership.id } }),
     ...(roleIds.length > 0 ? [prisma.memberRole.createMany({ data: roleIds.map((roleId) => ({ id: generateId(), roleId, serverMemberId: membership.id })) })] : []),
   ]);
+
+  await publishServerAccessUpdate(serverId);
 
   return c.body(null, 204);
 });
