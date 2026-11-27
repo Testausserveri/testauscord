@@ -51,6 +51,8 @@ export type UserRef = {
   avatarVersion: number | null;
 };
 
+export type EffectivePresence = 'ONLINE' | 'IDLE' | 'DND' | 'OFFLINE';
+
 export type FriendRequestDTO = {
   id: string;
   createdAt: string;

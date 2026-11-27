@@ -18,6 +18,13 @@ enum MessageFormat {
   E2EE
 }
 
+enum PresenceStatus {
+  ONLINE
+  IDLE
+  DND
+  INVISIBLE
+}
+
 model User {
   id String @id
   username String @unique
@@ -25,6 +32,7 @@ model User {
   bio String?
   avatarVersion Int?
   allowDmsFromServerMembers Boolean @default(true)
+  presenceStatus PresenceStatus @default(ONLINE)
   password String
   sessions Session[]
 

@@ -83,6 +83,15 @@ export const removeConnection = (ws: ServerWebSocket): void => {
 
 export const getUserId = (ws: ServerWebSocket): string | undefined => connections.get(ws)?.userId;
 
+export const isUserConnected = (userId: string, now = Date.now()): boolean => {
+  for (const connection of connections.values()) {
+    if (connection.userId !== userId) continue;
+    if (connection.ws.readyState === WebSocket.OPEN && connection.sessionExpiresAt > now) return true;
+  }
+
+  return false;
+};
+
 export const checkFrameBudget = (ws: ServerWebSocket, now = Date.now()): boolean => connections.get(ws)?.frameLimiter.check('frame', now).allowed ?? false;
 
 export const touchConnection = (ws: ServerWebSocket, now = Date.now()): void => {

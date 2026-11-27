@@ -1,4 +1,4 @@
-import type { MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, ServerLayout, UserRef } from './protocol';
+import type { EffectivePresence, MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, ServerLayout, UserRef } from './protocol';
 
 export type DomainEvent =
   | {
@@ -52,6 +52,12 @@ export type DomainEvent =
   | {
       type: 'DM_CREATE';
       channelId: string;
+      recipientIds: string[];
+    }
+  | {
+      type: 'PRESENCE_UPDATE';
+      userId: string;
+      status: EffectivePresence;
       recipientIds: string[];
     };
 

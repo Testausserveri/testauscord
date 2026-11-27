@@ -7,6 +7,7 @@ import {
   closeSessionConnections,
   closeUserConnections,
   closeUserConnectionsSilently,
+  isUserConnected,
   markAlive,
   openConnection,
   publishToChannel,
@@ -34,7 +35,7 @@ const createSocket = () => {
     },
   };
 
-  return { ws: socket as unknown as ServerWebSocket, sent, closed };
+  return { ws: socket as unknown as ServerWebSocket, socket, sent, closed };
 };
 
 test('publishes only to subscribed sockets and cleans up', () => {
@@ -63,6 +64,37 @@ test('publishes only to subscribed sockets and cleans up', () => {
 
   removeConnection(a.ws);
   removeConnection(a.ws);
+});
+
+test('reports a user connected while an open, unexpired socket exists', () => {
+  const now = 1_800_000_000_000;
+  const first = createSocket();
+  const second = createSocket();
+  const closed = createSocket();
+  const expired = createSocket();
+
+  expect(isUserConnected('user-presence', now)).toBe(false);
+
+  addConnection(first.ws, 'user-presence', 'session-1', now + 60_000, now);
+  expect(isUserConnected('user-presence', now)).toBe(true);
+
+  addConnection(second.ws, 'user-presence', 'session-2', now + 60_000, now);
+  expect(isUserConnected('user-presence', now)).toBe(true);
+
+  removeConnection(first.ws);
+  expect(isUserConnected('user-presence', now)).toBe(true);
+
+  removeConnection(second.ws);
+  expect(isUserConnected('user-presence', now)).toBe(false);
+
+  addConnection(closed.ws, 'user-presence', 'session-closed', now + 60_000, now);
+  closed.socket.readyState = WebSocket.CLOSED;
+  expect(isUserConnected('user-presence', now)).toBe(false);
+  removeConnection(closed.ws);
+
+  addConnection(expired.ws, 'user-presence', 'session-expired', now - 1, now);
+  expect(isUserConnected('user-presence', now)).toBe(false);
+  removeConnection(expired.ws);
 });
 
 test('publishes user events to every connection for that user', () => {
