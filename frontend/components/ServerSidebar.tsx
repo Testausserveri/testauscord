@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel, ServerDetail, ServerLayoutGroup } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
 import { PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { serverSettingsTabs } from '@/lib/serverSettings';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { groupServer, moveCategory, moveChannel, toLayoutPayload } from '@/lib/serverLayout';
 import { Button } from '@/components/ui/button';
@@ -501,10 +502,12 @@ export function ServerSidebar() {
                 Banned users
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem disabled={!server} onSelect={() => server && router.push(`/channels/${server.id}/settings`)}>
-              <Settings />
-              Server settings
-            </DropdownMenuItem>
+            {server && serverSettingsTabs(server).length > 0 && (
+              <DropdownMenuItem onSelect={() => router.push(`/channels/${server.id}/settings`)}>
+                <Settings />
+                Server settings
+              </DropdownMenuItem>
+            )}
             {user && !isOwner && (
               <>
                 <DropdownMenuSeparator />

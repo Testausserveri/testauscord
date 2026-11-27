@@ -104,9 +104,26 @@ export type ServerPatch = {
   iconPoster?: string;
 };
 
+export type ServerRole = {
+  id: string;
+  name: string;
+  color: number | null;
+  permissions: number;
+  position: number;
+  isDefault: boolean;
+};
+
+export type RolePatch = {
+  name?: string;
+  color?: number | null;
+  permissions?: number;
+};
+
 export type ServerDetail = Server & {
+  roles: ServerRole[];
   members: (UserRef & {
     joinedAt: string;
+    roleIds: string[];
   })[];
 };
 

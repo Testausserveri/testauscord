@@ -11,6 +11,7 @@ import type {
   OutgoingFriendRequest,
   ProfileDTO,
   ProfilePatch,
+  RolePatch,
   Server,
   ServerBan,
   ServerCategory,
@@ -19,6 +20,7 @@ import type {
   ServerInvite,
   ServerLayoutPayload,
   ServerPatch,
+  ServerRole,
 } from '@/types/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -192,6 +194,22 @@ export const deleteCategory = async (serverId: string, categoryId: string) => {
 
 export const updateServer = async (serverId: string, patch: ServerPatch): Promise<{ id: string; name: string; iconVersion: number | null }> => {
   return await axios.patch(`${API_URL}/servers/${serverId}`, patch, { withCredentials: true }).then((res) => res.data);
+};
+
+export const createRole = async (serverId: string, name: string): Promise<ServerRole> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/roles`, { name }, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updateRole = async (serverId: string, roleId: string, patch: RolePatch): Promise<ServerRole> => {
+  return await axios.patch(`${API_URL}/servers/${serverId}/roles/${roleId}`, patch, { withCredentials: true }).then((res) => res.data);
+};
+
+export const deleteRole = async (serverId: string, roleId: string) => {
+  await axios.delete(`${API_URL}/servers/${serverId}/roles/${roleId}`, { withCredentials: true });
+};
+
+export const reorderRoles = async (serverId: string, roleIds: string[]): Promise<ServerRole[]> => {
+  return await axios.put(`${API_URL}/servers/${serverId}/roles/order`, { roleIds }, { withCredentials: true }).then((res) => res.data);
 };
 
 export const createInvite = async (serverId: string, channelId?: string): Promise<{ code: string }> => {

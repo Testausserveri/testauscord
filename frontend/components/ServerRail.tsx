@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
 import { firstChannel, getServerRoute } from '@/lib/serverRoutes';
 import { PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { serverSettingsTabs } from '@/lib/serverSettings';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { logoutToLogin } from '@/lib/logout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
@@ -75,10 +76,12 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
               Banned users
             </ContextMenuItem>
           )}
-          <ContextMenuItem onSelect={() => onAction('settings')}>
-            <Settings />
-            Server settings
-          </ContextMenuItem>
+          {serverSettingsTabs(server).length > 0 && (
+            <ContextMenuItem onSelect={() => onAction('settings')}>
+              <Settings />
+              Server settings
+            </ContextMenuItem>
+          )}
           {user && user.id !== server.ownerId && (
             <>
               <ContextMenuSeparator />
