@@ -1,4 +1,4 @@
-import type { EffectivePresence, MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, ServerLayout, UserRef } from './protocol';
+import type { EffectivePresence, MessageDTO, FriendRequestDTO, FriendRequestRemoveReason, PresenceStatus, ServerLayout, UserRef } from './protocol';
 
 export type DomainEvent =
   | {
@@ -59,6 +59,11 @@ export type DomainEvent =
       userId: string;
       status: EffectivePresence;
       recipientIds: string[];
+    }
+  | {
+      type: 'PRESENCE_SELF_UPDATE';
+      userId: string;
+      presenceStatus: PresenceStatus;
     };
 
 export type EventListener = (event: DomainEvent) => void;

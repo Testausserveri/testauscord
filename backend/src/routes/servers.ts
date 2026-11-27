@@ -8,6 +8,7 @@ import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
 import { getBan } from '../services/moderation';
 import { ALL_PERMISSIONS, getMemberAccess, hasUnknownPermissionBits, requirePermission, PERMISSIONS } from '../services/permissions';
+import { effectivePresence } from '../services/presence';
 import { planCategoryDelete, planChannelAssign, planLayout, nextPosition, type ChannelPlacement } from '../services/serverLayout';
 import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
 import { nextServerPosition } from '../services/serverOrder';
@@ -386,7 +387,7 @@ app.get('/:id', async (c) => {
       members: {
         select: {
           joinedAt: true,
-          user: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
+          user: { select: { id: true, username: true, displayName: true, avatarVersion: true, presenceStatus: true } },
           roles: { select: { roleId: true, role: { select: { permissions: true, position: true } } } },
         },
         orderBy: { joinedAt: 'asc' },
@@ -419,6 +420,7 @@ app.get('/:id', async (c) => {
         username: member.user.username,
         displayName: member.user.displayName,
         avatarVersion: member.user.avatarVersion,
+        status: effectivePresence(member.user.id, member.user.presenceStatus),
         joinedAt: member.joinedAt,
         roleIds: member.roles.map((entry) => entry.roleId),
       })),

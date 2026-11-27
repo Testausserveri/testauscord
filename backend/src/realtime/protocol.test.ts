@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { HEARTBEAT_INTERVAL_MS, PROTOCOL_VERSION, clientFrameSchema, readyFrame } from './protocol';
+import { HEARTBEAT_INTERVAL_MS, PROTOCOL_VERSION, clientFrameSchema, presenceSelfUpdateFrame, presenceUpdateFrame, readyFrame } from './protocol';
 
 test('builds a READY frame with the user and protocol settings', () => {
   expect(readyFrame({ id: 'user-1', username: 'alice', displayName: 'Alice', avatarVersion: null })).toEqual({
@@ -9,6 +9,18 @@ test('builds a READY frame with the user and protocol settings', () => {
       protocolVersion: PROTOCOL_VERSION,
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
     },
+  });
+});
+
+test('builds presence frames', () => {
+  expect(presenceUpdateFrame('user-1', 'IDLE')).toEqual({
+    type: 'PRESENCE_UPDATE',
+    data: { userId: 'user-1', status: 'IDLE' },
+  });
+
+  expect(presenceSelfUpdateFrame('INVISIBLE')).toEqual({
+    type: 'PRESENCE_SELF_UPDATE',
+    data: { presenceStatus: 'INVISIBLE' },
   });
 });
 

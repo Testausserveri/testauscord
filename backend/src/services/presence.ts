@@ -18,7 +18,7 @@ export const presenceRecipientIds = async (userId: string): Promise<string[]> =>
       select: { userAId: true, userBId: true },
     }),
     prisma.serverMember.findMany({
-      where: { userId },
+      where: { userId, server: { bans: { none: { userId } } } },
       select: {
         server: {
           select: {

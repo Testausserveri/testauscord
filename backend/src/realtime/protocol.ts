@@ -52,6 +52,7 @@ export type UserRef = {
 };
 
 export type EffectivePresence = 'ONLINE' | 'IDLE' | 'DND' | 'OFFLINE';
+export type PresenceStatus = 'ONLINE' | 'IDLE' | 'DND' | 'INVISIBLE';
 
 export type FriendRequestDTO = {
   id: string;
@@ -115,6 +116,8 @@ export type ServerFrame =
   | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
   | { type: 'FRIEND_REQUEST_REMOVE'; data: { requestId: string; reason: FriendRequestRemoveReason } }
   | { type: 'DM_CREATE'; data: { channelId: string } }
+  | { type: 'PRESENCE_UPDATE'; data: { userId: string; status: EffectivePresence } }
+  | { type: 'PRESENCE_SELF_UPDATE'; data: { presenceStatus: PresenceStatus } }
   | { type: 'SESSION_REVOKED' }
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
@@ -173,6 +176,16 @@ export const friendRequestRemoveFrame = (requestId: string, reason: FriendReques
 export const dmCreateFrame = (channelId: string): ServerFrame => ({
   type: 'DM_CREATE',
   data: { channelId },
+});
+
+export const presenceUpdateFrame = (userId: string, status: EffectivePresence): ServerFrame => ({
+  type: 'PRESENCE_UPDATE',
+  data: { userId, status },
+});
+
+export const presenceSelfUpdateFrame = (presenceStatus: PresenceStatus): ServerFrame => ({
+  type: 'PRESENCE_SELF_UPDATE',
+  data: { presenceStatus },
 });
 
 export const sessionRevokedFrame = (): ServerFrame => ({ type: 'SESSION_REVOKED' });

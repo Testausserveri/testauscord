@@ -115,6 +115,43 @@ test('dispatches member additions to every recipient and nobody else', () => {
   }
 });
 
+test('dispatches presence updates to recipients and self updates only to the user', () => {
+  const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-c': [] };
+  const sockets: ServerWebSocket[] = [];
+
+  for (const userId of Object.keys(sent)) {
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send: (payload: string) => {
+        sent[userId]!.push(payload);
+        return payload.length;
+      },
+    } as unknown as ServerWebSocket;
+
+    addConnection(socket, userId, `session-${userId}`, Date.now() + 60_000);
+    sockets.push(socket);
+  }
+
+  const stop = startDispatcher();
+
+  try {
+    eventBus.publish({ type: 'PRESENCE_UPDATE', userId: 'user-a', status: 'IDLE', recipientIds: ['user-b'] });
+
+    expect(sent['user-b']).toEqual([JSON.stringify({ type: 'PRESENCE_UPDATE', data: { userId: 'user-a', status: 'IDLE' } })]);
+    expect(sent['user-a']).toEqual([]);
+    expect(sent['user-c']).toEqual([]);
+
+    eventBus.publish({ type: 'PRESENCE_SELF_UPDATE', userId: 'user-a', presenceStatus: 'INVISIBLE' });
+
+    expect(sent['user-a']).toEqual([JSON.stringify({ type: 'PRESENCE_SELF_UPDATE', data: { presenceStatus: 'INVISIBLE' } })]);
+    expect(sent['user-b']).toHaveLength(1);
+    expect(sent['user-c']).toEqual([]);
+  } finally {
+    stop();
+    for (const socket of sockets) removeConnection(socket);
+  }
+});
+
 test('dispatches server updates to every recipient and nobody else', () => {
   const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-out': [] };
   const sockets: ServerWebSocket[] = [];

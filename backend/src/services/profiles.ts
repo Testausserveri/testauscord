@@ -1,9 +1,11 @@
 import { prisma } from '../db';
-import type { UserRef } from '../realtime/protocol';
+import type { PresenceStatus } from '../generated/prisma/client';
+import type { EffectivePresence, UserRef } from '../realtime/protocol';
 import { friendPair } from './directMessages';
 
-export type ProfileDTO = UserRef & { bio: string | null };
-export type AccountDTO = ProfileDTO & { allowDmsFromServerMembers: boolean };
+export type ProfileRow = UserRef & { bio: string | null; presenceStatus: PresenceStatus };
+export type ProfileDTO = Omit<ProfileRow, 'presenceStatus'> & { status: EffectivePresence | null };
+export type AccountDTO = ProfileDTO & { presenceStatus: PresenceStatus; allowDmsFromServerMembers: boolean };
 
 export const getUserRef = async (userId: string): Promise<UserRef | null> => {
   return prisma.user.findUnique({

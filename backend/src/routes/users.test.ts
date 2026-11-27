@@ -1,9 +1,20 @@
-import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
+import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
+import type { PresenceStatus } from '../generated/prisma/client';
+import { addConnection, removeConnection } from '../realtime/connections';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
-type Row = { id: string; username: string; displayName: string | null; bio: string | null; avatarVersion: number | null; allowDmsFromServerMembers: boolean };
+type Row = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  bio: string | null;
+  avatarVersion: number | null;
+  allowDmsFromServerMembers: boolean;
+  presenceStatus: PresenceStatus;
+};
 
 let users: Record<string, Row> = {};
 let friendship: { id: string } | null = null;
@@ -27,6 +38,8 @@ const findServerMember = mock(async () => sharedServer);
 const findFriendRequest = mock(async () => pendingRequest);
 const findFriendships = mock(async () => friendships);
 const findChannel = mock(async () => directChannel);
+const findServerMemberships = mock(async () => (sharedServer ? [{ server: { members: [{ userId: 'friend' }, { userId: 'stranger' }], bans: [] } }] : []));
+const findChannelMembers = mock(async () => (directChannel ? [{ channel: { members: [{ userId: 'stranger' }] } }] : []));
 const updateUser = mock(async ({ where, data }: { where: { id: string }; data: Partial<Pick<Row, 'username' | 'displayName' | 'bio' | 'avatarVersion'>> }) => {
   if (takenUsername !== null && data.username === takenUsername) {
     throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
@@ -40,9 +53,10 @@ const updateUser = mock(async ({ where, data }: { where: { id: string }; data: P
 const prismaMock = {
   user: { findUnique: findUser, update: updateUser },
   friendship: { findUnique: findFriendship, findMany: findFriendships },
-  serverMember: { findFirst: findServerMember },
+  serverMember: { findFirst: findServerMember, findMany: findServerMemberships },
   friendRequest: { findFirst: findFriendRequest },
   channel: { findUnique: findChannel },
+  channelMember: { findMany: findChannelMembers },
   avatar: { upsert: mock(async () => undefined), deleteMany: mock(async () => ({ count: 1 })) },
 };
 
@@ -52,6 +66,14 @@ mock.module('../db', () => ({
     $transaction: async (callback: (tx: typeof prismaMock) => Promise<unknown>) => callback(prismaMock),
   },
 }));
+
+const sockets: ServerWebSocket[] = [];
+
+const connect = (userId: string) => {
+  const socket = { readyState: WebSocket.OPEN } as ServerWebSocket;
+  addConnection(socket, userId, `session-test-${userId}`, Date.now() + 60_000);
+  sockets.push(socket);
+};
 
 const { default: usersRoute } = await import('./users');
 
@@ -104,6 +126,7 @@ const profile = (id: string): Row => ({
   bio: id === 'viewer' ? 'hello' : null,
   avatarVersion: null,
   allowDmsFromServerMembers: true,
+  presenceStatus: 'ONLINE',
 });
 
 beforeEach(() => {
@@ -123,6 +146,13 @@ beforeEach(() => {
   directChannel = null;
   takenUsername = null;
   friendships = [];
+  connect('viewer');
+  connect('writer');
+});
+
+afterEach(() => {
+  for (const socket of sockets) removeConnection(socket);
+  sockets.length = 0;
 });
 
 afterAll(() => mock.restore());
@@ -131,25 +161,38 @@ test('returns the full profile for the current user', async () => {
   const response = await app.request('/users/@me');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'viewer', username: 'viewer', displayName: 'Viewer', bio: 'hello', avatarVersion: null, allowDmsFromServerMembers: true });
+  expect(await response.json()).toEqual({
+    id: 'viewer',
+    username: 'viewer',
+    displayName: 'Viewer',
+    bio: 'hello',
+    avatarVersion: null,
+    allowDmsFromServerMembers: true,
+    presenceStatus: 'ONLINE',
+    status: 'ONLINE',
+  });
 });
 
 test('returns a friend profile', async () => {
   friendship = { id: 'friendship-1' };
+  friendships = [{ userAId: 'viewer', userBId: 'friend' }];
+  connect('friend');
 
   const response = await app.request('/users/friend');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null, avatarVersion: null, canDm: true });
+  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null, avatarVersion: null, status: 'ONLINE', canDm: true });
 });
 
-test('returns a profile for a pending request', async () => {
+test('returns a profile for a pending request without a status', async () => {
   pendingRequest = { id: 'request-1' };
 
   const response = await app.request('/users/stranger');
+  const body = (await response.json()) as { id: string; status: null };
 
   expect(response.status).toBe(200);
-  expect(((await response.json()) as { id: string }).id).toBe('stranger');
+  expect(body.id).toBe('stranger');
+  expect(body.status).toBeNull();
 });
 
 test('computes canDm from friendships, shared servers and existing conversations', async () => {
@@ -178,11 +221,12 @@ test('computes canDm from friendships, shared servers and existing conversations
 
 test('never exposes the privacy preference on another profile', async () => {
   sharedServer = { id: 'member-1' };
+  connect('stranger');
 
   const response = await app.request('/users/stranger');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'stranger', username: 'stranger', displayName: null, bio: null, avatarVersion: null, canDm: true });
+  expect(await response.json()).toEqual({ id: 'stranger', username: 'stranger', displayName: null, bio: null, avatarVersion: null, status: 'ONLINE', canDm: true });
 });
 
 test('updates the DM privacy preference', async () => {
@@ -229,7 +273,16 @@ test('updates and normalizes display name and bio', async () => {
   const response = await patchProfile(writerApp, { displayName: '  Alice  ', bio: 'hello\r\nworld  \r\n' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: 'Alice', bio: 'hello\nworld', avatarVersion: null, allowDmsFromServerMembers: true });
+  expect(await response.json()).toEqual({
+    id: 'writer',
+    username: 'writer',
+    displayName: 'Alice',
+    bio: 'hello\nworld',
+    avatarVersion: null,
+    allowDmsFromServerMembers: true,
+    presenceStatus: 'ONLINE',
+    status: 'ONLINE',
+  });
 });
 
 test('clears display name and bio when empty', async () => {
@@ -238,7 +291,16 @@ test('clears display name and bio when empty', async () => {
   const response = await patchProfile(writerApp, { displayName: '   ', bio: '' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: null, bio: null, avatarVersion: null, allowDmsFromServerMembers: true });
+  expect(await response.json()).toEqual({
+    id: 'writer',
+    username: 'writer',
+    displayName: null,
+    bio: null,
+    avatarVersion: null,
+    allowDmsFromServerMembers: true,
+    presenceStatus: 'ONLINE',
+    status: 'ONLINE',
+  });
 });
 
 test('changes the username and keeps the same name a no-op', async () => {

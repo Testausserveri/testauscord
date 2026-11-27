@@ -49,7 +49,7 @@ const findFirst = mock(async ({ where }: { where: DetailWhere | ManageWhere }) =
     ...toServer(server),
     members: server.members.map((userId) => ({
       joinedAt: server.createdAt,
-      user: userOf(userId),
+      user: { ...userOf(userId), presenceStatus: 'ONLINE' },
       roles: [],
     })),
   };
@@ -369,7 +369,13 @@ test('still lists the server for a member without a ban', async () => {
 
   const detail = await get(app, `/${serverId}`);
   expect(detail.status).toBe(200);
-  expect(await detail.json()).toMatchObject({ id: serverId, members: [{ id: `owner-visible` }, { id: memberId }] });
+  expect(await detail.json()).toMatchObject({
+    id: serverId,
+    members: [
+      { id: 'owner-visible', status: 'OFFLINE' },
+      { id: memberId, status: 'OFFLINE' },
+    ],
+  });
 });
 
 test('bans a member and removes the membership and their invites', async () => {

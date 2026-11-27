@@ -1,5 +1,8 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
+import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
+import type { PresenceStatus } from '../generated/prisma/client';
+import { addConnection, removeConnection } from '../realtime/connections';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
@@ -9,13 +12,14 @@ type UserRow = {
   displayName: string | null;
   avatarVersion: number | null;
   allowDmsFromServerMembers: boolean;
+  presenceStatus: PresenceStatus;
 };
 type ChannelRow = { id: string; dmKey: string; type: string; createdAt: Date };
 type MemberRow = { channelId: string; userId: string; dmVisible: boolean };
 
-const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null, allowDmsFromServerMembers: true };
-const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null, allowDmsFromServerMembers: true };
-const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol', avatarVersion: null, allowDmsFromServerMembers: true };
+const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null, allowDmsFromServerMembers: true, presenceStatus: 'ONLINE' };
+const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null, allowDmsFromServerMembers: true, presenceStatus: 'IDLE' };
+const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol', avatarVersion: null, allowDmsFromServerMembers: true, presenceStatus: 'DND' };
 
 let users: UserRow[] = [];
 let friendships: { userAId: string; userBId: string }[] = [];
@@ -64,7 +68,7 @@ const findChannels = mock(async ({ where }: { where: { type: string; members: { 
         .filter((entry) => entry.channelId === channel.id && entry.userId !== viewerId)
         .flatMap((entry) => {
           const user = users.find((candidate) => candidate.id === entry.userId);
-          return user ? [{ user: { id: user.id, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion } }] : [];
+          return user ? [{ user: { id: user.id, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion, presenceStatus: user.presenceStatus } }] : [];
         }),
     }));
 });
@@ -118,6 +122,14 @@ mock.module('../db', () => ({
   },
 }));
 
+const sockets: ServerWebSocket[] = [];
+
+const connect = (userId: string) => {
+  const socket = { readyState: WebSocket.OPEN } as ServerWebSocket;
+  addConnection(socket, userId, `session-test-${userId}`, Date.now() + 60_000);
+  sockets.push(socket);
+};
+
 const { default: dmsRoute } = await import('./dms');
 
 const createApp = (user: UserRow) => {
@@ -156,11 +168,17 @@ beforeEach(() => {
   beforeCreate = null;
   events = [];
   stopEvents = eventBus.subscribe((event) => events.push(event));
+  connect(alice.id);
+  connect(bob.id);
+  connect(carol.id);
 });
 
 afterEach(() => {
   stopEvents?.();
   stopEvents = null;
+
+  for (const socket of sockets) removeConnection(socket);
+  sockets.length = 0;
 });
 
 afterAll(() => mock.restore());
@@ -312,12 +330,12 @@ test('lists only the viewer DMs, newest first, and includes friend DMs', async (
   expect(await response.json()).toEqual([
     {
       channelId: 'channel-carol',
-      user: { id: carol.id, username: carol.username, displayName: carol.displayName, avatarVersion: null },
+      user: { id: carol.id, username: carol.username, displayName: carol.displayName, avatarVersion: null, status: 'DND' },
       createdAt: newer.toISOString(),
     },
     {
       channelId: 'channel-bob',
-      user: { id: bob.id, username: bob.username, displayName: bob.displayName, avatarVersion: null },
+      user: { id: bob.id, username: bob.username, displayName: bob.displayName, avatarVersion: null, status: 'IDLE' },
       createdAt: older.toISOString(),
     },
   ]);

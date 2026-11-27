@@ -3,11 +3,12 @@ import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { validateSessionId } from '../auth/session';
-import { checkFrameBudget, getUserId, isSubscribed, markAlive, openConnection, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
+import { checkFrameBudget, getUserId, isSubscribed, isUserConnected, markAlive, openConnection, removeConnection, subscribe, touchConnection, unsubscribe } from '../realtime/connections';
 import { isAllowedOrigin } from '../realtime/origin';
 import { PROTOCOL_VERSION, errorFrame, pongFrameSchema, type ErrorCode } from '../realtime/protocol';
 import { redeemTicket } from '../realtime/ticket';
 import { canAccessChannel } from '../services/access';
+import { publishPresence } from '../services/presence';
 import { getUserRef } from '../services/profiles';
 import type { Variables } from '../types/types';
 
@@ -62,7 +63,11 @@ app.get(
 
     return {
       onOpen(_, ctx) {
-        openConnection(ctx.raw as ServerWebSocket, userRef, session.id, session.expiresAt.getTime());
+        const wasConnected = isUserConnected(userRef.id);
+
+        if (openConnection(ctx.raw as ServerWebSocket, userRef, session.id, session.expiresAt.getTime()) && !wasConnected) {
+          void publishPresence(userRef.id).catch(() => {});
+        }
       },
 
       async onMessage(event, ctx) {

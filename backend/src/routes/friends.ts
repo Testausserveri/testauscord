@@ -7,6 +7,7 @@ import { generateId } from '../utils/utils';
 import { prisma } from '../db';
 import { eventBus } from '../realtime/bus';
 import { directChannelKey, friendPair } from '../services/directMessages';
+import { effectivePresence } from '../services/presence';
 import { getUserRef } from '../services/profiles';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -375,6 +376,7 @@ app.get('/', async (c) => {
           username: true,
           displayName: true,
           avatarVersion: true,
+          presenceStatus: true,
         },
       },
       userB: {
@@ -383,6 +385,7 @@ app.get('/', async (c) => {
           username: true,
           displayName: true,
           avatarVersion: true,
+          presenceStatus: true,
         },
       },
     },
@@ -403,13 +406,14 @@ app.get('/', async (c) => {
   const response = friendships.map((entry) => {
     const friend = entry.userAId === c.get('user')!.id ? entry.userB : entry.userA;
     const channelId = channelByKey.get(directChannelKey(entry.userAId, entry.userBId)) ?? '';
+    const { presenceStatus, ...ref } = friend;
 
     return {
       id: channelId,
       channelId,
       friendshipId: entry.id,
       friendsSince: entry.createdAt,
-      friend,
+      friend: { ...ref, status: effectivePresence(friend.id, presenceStatus) },
     };
   });
 

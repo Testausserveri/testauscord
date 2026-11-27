@@ -31,8 +31,14 @@ export const SESSION_REVALIDATION_INTERVAL_MS = 5 * 60_000;
 const connections = new Map<ServerWebSocket, Connection>();
 const channelConnections = new Map<string, Set<Connection>>();
 
+let onLastConnectionRemoved: ((userId: string) => void) | null = null;
+
+export const setOnLastConnectionRemoved = (callback: ((userId: string) => void) | null): void => {
+  onLastConnectionRemoved = callback;
+};
+
 export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: string, sessionExpiresAt: number, now = Date.now()): boolean => {
-  if (connections.has(ws)) removeConnection(ws);
+  if (connections.has(ws)) removeConnection(ws, false);
 
   let userConnections = 0;
   for (const connection of connections.values()) {
@@ -57,16 +63,17 @@ export const addConnection = (ws: ServerWebSocket, userId: string, sessionId: st
   return true;
 };
 
-export const openConnection = (ws: ServerWebSocket, user: UserRef, sessionId: string, sessionExpiresAt: number, now = Date.now()): void => {
+export const openConnection = (ws: ServerWebSocket, user: UserRef, sessionId: string, sessionExpiresAt: number, now = Date.now()): boolean => {
   if (!addConnection(ws, user.id, sessionId, sessionExpiresAt, now)) {
     ws.close(4009, 'Too many connections');
-    return;
+    return false;
   }
 
   ws.send(JSON.stringify(readyFrame(user)));
+  return true;
 };
 
-export const removeConnection = (ws: ServerWebSocket): void => {
+export const removeConnection = (ws: ServerWebSocket, notify = true): void => {
   const connection = connections.get(ws);
   if (!connection) return;
 
@@ -79,6 +86,10 @@ export const removeConnection = (ws: ServerWebSocket): void => {
   }
 
   connections.delete(ws);
+
+  if (notify && onLastConnectionRemoved && !isUserConnected(connection.userId)) {
+    onLastConnectionRemoved(connection.userId);
+  }
 };
 
 export const getUserId = (ws: ServerWebSocket): string | undefined => connections.get(ws)?.userId;

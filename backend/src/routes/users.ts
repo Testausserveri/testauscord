@@ -5,8 +5,9 @@ import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
-import { canViewUser, type AccountDTO, type ProfileDTO } from '../services/profiles';
+import { canViewUser, type AccountDTO, type ProfileRow } from '../services/profiles';
 import { canStartDm } from '../services/directMessages';
+import { canViewPresence, effectivePresence, publishPresence } from '../services/presence';
 import { createRateLimiter } from '../utils/rateLimit';
 import { containsBidiControls, containsControlChars, isValidUsername } from '../utils/validation';
 
@@ -15,10 +16,13 @@ const userLookupLimiter = createRateLimiter(60, 60_000);
 const avatarLimiter = createRateLimiter(300, 60_000);
 const profileWriteLimiter = createRateLimiter(30, 60 * 60_000);
 const usernameChangeLimiter = createRateLimiter(10, 60 * 60_000);
+const presenceLimiter = createRateLimiter(60, 60_000);
 const MAX_PROFILE_EVENT_RECIPIENTS = 500;
 
-const profileSelect = { id: true, username: true, displayName: true, bio: true, avatarVersion: true } as const;
+const profileSelect = { id: true, username: true, displayName: true, bio: true, avatarVersion: true, presenceStatus: true } as const;
 const accountSelect = { ...profileSelect, allowDmsFromServerMembers: true } as const;
+
+const presenceSchema = z.object({ status: z.enum(['ONLINE', 'IDLE', 'DND', 'INVISIBLE']) }).strict();
 
 const profilePatchSchema = z
   .object({
@@ -117,7 +121,7 @@ app.patch('/users/@me', async (c) => {
   if (avatarWrite !== undefined) data.avatarVersion = 'clear' in avatarWrite ? null : avatarWrite.version;
 
   try {
-    const user: AccountDTO = await prisma.$transaction(async (tx) => {
+    const user = await prisma.$transaction(async (tx) => {
       if (avatarWrite !== undefined) {
         if ('clear' in avatarWrite) {
           await tx.avatar.deleteMany({ where: { userId: viewerId } });
@@ -154,13 +158,41 @@ app.patch('/users/@me', async (c) => {
       });
     }
 
-    return c.json(user, 200);
+    return c.json({ ...user, status: effectivePresence(viewerId, user.presenceStatus) }, 200);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return c.text('Username already in use', 409);
     }
     throw error;
   }
+});
+
+app.put('/users/@me/presence', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const viewerId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, presenceLimiter, viewerId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = presenceSchema.safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid presence status', 400);
+  }
+
+  const user = await prisma.user.update({
+    where: { id: viewerId },
+    data: { presenceStatus: result.data.status },
+    select: { presenceStatus: true },
+  });
+
+  await publishPresence(viewerId);
+  eventBus.publish({ type: 'PRESENCE_SELF_UPDATE', userId: viewerId, presenceStatus: user.presenceStatus });
+
+  return c.json({ presenceStatus: user.presenceStatus }, 200);
 });
 
 app.get('/users/:id/avatar', async (c) => {
@@ -208,7 +240,7 @@ app.get('/users/:id', async (c) => {
   const targetId = c.req.param('id') === '@me' ? viewerId : c.req.param('id');
 
   if (targetId === viewerId) {
-    const user: AccountDTO | null = await prisma.user.findUnique({
+    const user: Omit<AccountDTO, 'status'> | null = await prisma.user.findUnique({
       where: { id: viewerId },
       select: accountSelect,
     });
@@ -217,10 +249,10 @@ app.get('/users/:id', async (c) => {
       return c.text('User not found', 404);
     }
 
-    return c.json(user, 200);
+    return c.json({ ...user, status: effectivePresence(viewerId, user.presenceStatus) }, 200);
   }
 
-  const user: ProfileDTO | null = await prisma.user.findUnique({
+  const user: ProfileRow | null = await prisma.user.findUnique({
     where: { id: targetId },
     select: profileSelect,
   });
@@ -229,7 +261,10 @@ app.get('/users/:id', async (c) => {
     return c.text('User not found', 404);
   }
 
-  return c.json({ ...user, canDm: await canStartDm(viewerId, user.id) }, 200);
+  const { presenceStatus, ...profile } = user;
+  const [visible, canDm] = await Promise.all([canViewPresence(viewerId, user.id), canStartDm(viewerId, user.id)]);
+
+  return c.json({ ...profile, status: visible ? effectivePresence(user.id, presenceStatus) : null, canDm }, 200);
 });
 
 export default app;

@@ -4,6 +4,7 @@ import { ChannelType } from '../generated/prisma/client';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { canStartDm, directChannelKey } from '../services/directMessages';
+import { effectivePresence } from '../services/presence';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
 
@@ -11,7 +12,7 @@ const app = new Hono<{ Variables: Variables }>();
 const dmCreateLimiter = createRateLimiter(30, 60_000);
 const dmListLimiter = createRateLimiter(60, 60_000);
 
-const userRefSelect = { id: true, username: true, displayName: true, avatarVersion: true } as const;
+const userRefSelect = { id: true, username: true, displayName: true, avatarVersion: true, presenceStatus: true } as const;
 
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
@@ -137,7 +138,9 @@ app.get('/', async (c) => {
     const user = channel.members[0]?.user;
     if (!user) return [];
 
-    return [{ channelId: channel.id, user, createdAt: channel.createdAt }];
+    const { presenceStatus, ...ref } = user;
+
+    return [{ channelId: channel.id, user: { ...ref, status: effectivePresence(user.id, presenceStatus) }, createdAt: channel.createdAt }];
   });
 
   return c.json(dms, 200);

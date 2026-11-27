@@ -5,6 +5,8 @@ import {
   friendRequestCreateFrame,
   friendRequestRemoveFrame,
   messageCreateFrame,
+  presenceSelfUpdateFrame,
+  presenceUpdateFrame,
   serverAccessUpdateFrame,
   serverLayoutUpdateFrame,
   serverMemberAddedFrame,
@@ -50,6 +52,12 @@ const dispatch = (event: DomainEvent): void => {
     const payload = JSON.stringify(dmCreateFrame(event.channelId));
 
     for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'PRESENCE_UPDATE') {
+    const payload = JSON.stringify(presenceUpdateFrame(event.userId, event.status));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'PRESENCE_SELF_UPDATE') {
+    publishToUser(event.userId, JSON.stringify(presenceSelfUpdateFrame(event.presenceStatus)));
   }
 };
 

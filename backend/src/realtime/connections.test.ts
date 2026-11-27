@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun';
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
 import { FRAME_WINDOW_MS, HEARTBEAT_TIMEOUT_MS, MAX_CONNECTIONS_PER_USER, MAX_FRAMES_PER_WINDOW, MAX_SUBSCRIPTIONS } from './protocol';
 import {
   addConnection,
@@ -15,6 +15,7 @@ import {
   removeConnection,
   revalidateConnections,
   runHeartbeatSweep,
+  setOnLastConnectionRemoved,
   subscribe,
   unsubscribe,
   unsubscribeUserFromChannel,
@@ -37,6 +38,8 @@ const createSocket = () => {
 
   return { ws: socket as unknown as ServerWebSocket, socket, sent, closed };
 };
+
+afterEach(() => setOnLastConnectionRemoved(null));
 
 test('publishes only to subscribed sockets and cleans up', () => {
   const a = createSocket();
@@ -95,6 +98,70 @@ test('reports a user connected while an open, unexpired socket exists', () => {
   addConnection(expired.ws, 'user-presence', 'session-expired', now - 1, now);
   expect(isUserConnected('user-presence', now)).toBe(false);
   removeConnection(expired.ws);
+});
+
+test('notifies only when the last connection for a user is removed', () => {
+  const now = 1_800_000_000_000;
+  const first = createSocket();
+  const second = createSocket();
+  const removed: string[] = [];
+
+  addConnection(first.ws, 'user-last', 'session-last-1', now + 60_000, now);
+  addConnection(second.ws, 'user-last', 'session-last-2', now + 60_000, now);
+  setOnLastConnectionRemoved((userId) => removed.push(userId));
+
+  removeConnection(first.ws);
+  expect(removed).toEqual([]);
+
+  removeConnection(second.ws);
+  expect(removed).toEqual(['user-last']);
+});
+
+test('does not notify when a socket is replaced in place', () => {
+  const now = 1_800_000_000_000;
+  const socket = createSocket();
+  const removed: string[] = [];
+
+  addConnection(socket.ws, 'user-replace', 'session-replace-1', now + 60_000, now);
+  setOnLastConnectionRemoved((userId) => removed.push(userId));
+
+  addConnection(socket.ws, 'user-replace', 'session-replace-2', now + 60_000, now);
+  expect(removed).toEqual([]);
+
+  removeConnection(socket.ws);
+  expect(removed).toEqual(['user-replace']);
+});
+
+test('notifies when a heartbeat sweep removes the last connection', () => {
+  const now = 1_800_000_000_000;
+  const closed = createSocket();
+  const expired = createSocket();
+  const removed: string[] = [];
+
+  addConnection(closed.ws, 'user-sweep-closed', 'session-sweep-closed', now + 60_000, now);
+  addConnection(expired.ws, 'user-sweep-expired', 'session-sweep-expired', now - 1, now);
+  setOnLastConnectionRemoved((userId) => removed.push(userId));
+
+  closed.socket.readyState = WebSocket.CLOSED;
+  runHeartbeatSweep(now);
+
+  expect(removed.sort()).toEqual(['user-sweep-closed', 'user-sweep-expired']);
+});
+
+test('notifies when forced closes and session revalidation remove the last connection', async () => {
+  const now = 1_800_000_000_000;
+  const forced = createSocket();
+  const stale = createSocket();
+  const removed: string[] = [];
+
+  addConnection(forced.ws, 'user-forced', 'session-forced', now + 60_000, now);
+  addConnection(stale.ws, 'user-stale', 'session-stale', now + 60_000, now);
+  setOnLastConnectionRemoved((userId) => removed.push(userId));
+
+  closeUserConnections('user-forced');
+  await revalidateConnections(async () => null, now);
+
+  expect(removed.sort()).toEqual(['user-forced', 'user-stale']);
 });
 
 test('publishes user events to every connection for that user', () => {
@@ -329,7 +396,7 @@ test('caps connections per user', () => {
 test('sends READY after the connection is accepted', () => {
   const socket = createSocket();
 
-  openConnection(socket.ws, { id: 'user-ready', username: 'alice', displayName: null, avatarVersion: null }, 'session-ready', Date.now() + 60_000);
+  expect(openConnection(socket.ws, { id: 'user-ready', username: 'alice', displayName: null, avatarVersion: null }, 'session-ready', Date.now() + 60_000)).toBe(true);
 
   expect(socket.closed).toEqual([]);
   expect(JSON.parse(socket.sent[0]!)).toMatchObject({
@@ -349,7 +416,7 @@ test('sends nothing when the connection cap rejects the socket', () => {
   }
 
   const extra = createSocket();
-  openConnection(extra.ws, { id: 'user-ready-cap', username: 'alice', displayName: null, avatarVersion: null }, 'session-ready-cap-extra', now + 60_000, now);
+  expect(openConnection(extra.ws, { id: 'user-ready-cap', username: 'alice', displayName: null, avatarVersion: null }, 'session-ready-cap-extra', now + 60_000, now)).toBe(false);
 
   expect(extra.sent).toEqual([]);
   expect(extra.closed).toEqual([4009]);

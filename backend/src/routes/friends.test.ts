@@ -1,10 +1,13 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
+import type { ServerWebSocket } from 'bun';
 import { Hono } from 'hono';
+import type { PresenceStatus } from '../generated/prisma/client';
+import { addConnection, removeConnection } from '../realtime/connections';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import { friendPair } from '../services/directMessages';
 import type { Variables } from '../types/types';
 
-type UserRow = { id: string; username: string; displayName: string | null; avatarVersion: number | null };
+type UserRow = { id: string; username: string; displayName: string | null; avatarVersion: number | null; presenceStatus: PresenceStatus };
 type RequestRow = { id: string; senderId: string; receiverId: string; createdAt: Date };
 type FriendshipRow = { id: string; userAId: string; userBId: string; createdAt: Date };
 type ChannelRow = { id: string; dmKey: string };
@@ -12,9 +15,9 @@ type MemberRow = { channelId: string; userId: string; dmVisible?: boolean };
 type RequestWhere = { id?: string; senderId?: string; receiverId?: string };
 type FriendshipWhere = { userAId_userBId: { userAId: string; userBId: string } };
 
-const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null };
-const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null };
-const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol', avatarVersion: null };
+const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null, presenceStatus: 'ONLINE' };
+const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null, presenceStatus: 'IDLE' };
+const carol: UserRow = { id: 'user-carol', username: 'carol', displayName: 'Carol', avatarVersion: null, presenceStatus: 'DND' };
 
 let users: UserRow[] = [];
 let requests: RequestRow[] = [];
@@ -26,10 +29,22 @@ let beforeRequestDelete: (() => void) | null = null;
 let events: DomainEvent[] = [];
 let stopEvents: (() => void) | null = null;
 
-const findUser = mock(async ({ where }: { where: { username?: string; id?: string } }) => {
+const findUser = mock(async ({ where, select }: { where: { username?: string; id?: string }; select?: Partial<Record<keyof UserRow, true>> }) => {
   const user = where.id !== undefined ? users.find((entry) => entry.id === where.id) : users.find((entry) => entry.username === where.username);
-  return user ? { id: user.id, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion } : null;
+  if (!user) return null;
+  if (!select) return user;
+
+  return Object.fromEntries(Object.entries(select).map(([key]) => [key, user[key as keyof UserRow]]));
 });
+
+const userRef = (id: string) => {
+  const user = users.find((entry) => entry.id === id)!;
+  return { id: user.id, username: user.username, displayName: user.displayName, avatarVersion: user.avatarVersion, presenceStatus: user.presenceStatus };
+};
+
+const findFriendships = mock(async () => friendships.map((entry) => ({ ...entry, userA: userRef(entry.userAId), userB: userRef(entry.userBId) })));
+
+const findChannels = mock(async ({ where }: { where: { dmKey: { in: string[] } } }) => channels.filter((entry) => where.dmKey.in.includes(entry.dmKey)));
 
 const findFriendship = mock(async ({ where }: { where: FriendshipWhere }) => {
   const { userAId, userBId } = where.userAId_userBId;
@@ -123,8 +138,8 @@ const prismaMock = {
     create: createRequest,
     deleteMany: deleteRequests,
   },
-  friendship: { findUnique: findFriendship, upsert: upsertFriendship, delete: deleteFriendship },
-  channel: { upsert: upsertChannel },
+  friendship: { findUnique: findFriendship, findMany: findFriendships, upsert: upsertFriendship, delete: deleteFriendship },
+  channel: { upsert: upsertChannel, findMany: findChannels },
   channelMember: { createMany: createChannelMembers, updateMany: updateChannelMembers },
 };
 
@@ -154,6 +169,14 @@ mock.module('../db', () => ({
   },
 }));
 
+const sockets: ServerWebSocket[] = [];
+
+const connect = (userId: string) => {
+  const socket = { readyState: WebSocket.OPEN } as ServerWebSocket;
+  addConnection(socket, userId, `session-test-${userId}`, Date.now() + 60_000);
+  sockets.push(socket);
+};
+
 const { default: friendsRoute } = await import('./friends');
 
 const createApp = (user: UserRow) => {
@@ -173,7 +196,7 @@ const createApp = (user: UserRow) => {
 };
 
 const withUser = (id: string, username: string): UserRow => {
-  const user = { id, username, displayName: null, avatarVersion: null };
+  const user = { id, username, displayName: null, avatarVersion: null, presenceStatus: 'ONLINE' as const };
   users.push(user);
   return user;
 };
@@ -203,6 +226,9 @@ beforeEach(() => {
 afterEach(() => {
   stopEvents?.();
   stopEvents = null;
+
+  for (const socket of sockets) removeConnection(socket);
+  sockets.length = 0;
 });
 
 afterAll(() => mock.restore());
@@ -415,4 +441,24 @@ test('throttles friend request sends per user', async () => {
   expect(statuses.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 404));
   expect(statuses[10]).toBe(429);
   expect(last!.headers.get('retry-after')).toBeTruthy();
+});
+
+test('lists friends with their presence status', async () => {
+  const createdAt = new Date('2026-01-01T00:00:00.000Z');
+  friendships.push({ id: 'friendship-list', userAId: alice.id, userBId: bob.id, createdAt });
+  channels.push({ id: 'channel-list', dmKey: `${alice.id}:${bob.id}` });
+  connect(bob.id);
+
+  const response = await createApp(alice).request('/friends');
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual([
+    {
+      id: 'channel-list',
+      channelId: 'channel-list',
+      friendshipId: 'friendship-list',
+      friendsSince: createdAt.toISOString(),
+      friend: { id: bob.id, username: 'bob', displayName: null, avatarVersion: null, status: 'IDLE' },
+    },
+  ]);
 });
