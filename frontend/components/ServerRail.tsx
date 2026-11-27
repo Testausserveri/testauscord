@@ -251,6 +251,11 @@ export function ServerRail() {
                 isActive={route?.serverId === server.id}
                 user={user}
                 onAction={(nextAction) => {
+                  if (nextAction === 'settings') {
+                    router.push(`/channels/${server.id}/settings`);
+                    return;
+                  }
+
                   setActionServer(server);
                   setAction(nextAction);
                 }}

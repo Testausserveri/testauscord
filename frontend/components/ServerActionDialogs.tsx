@@ -13,7 +13,6 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { useProfilePopover } from './ProfilePopoverProvider';
 import { ServerBansDialog } from './ServerBansDialog';
-import { ServerSettingsDialog } from './ServerSettingsDialog';
 
 type Props = {
   server: Server | null;
@@ -330,7 +329,6 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
       </Dialog>
 
       {action === 'bans' && <ServerBansDialog server={server} onClose={close} />}
-      {action === 'settings' && <ServerSettingsDialog server={server} onClose={close} />}
     </>
   );
 }

@@ -18,8 +18,10 @@ import { getServerRoute } from '@/lib/serverRoutes';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isServerRoute = getServerRoute(pathname) !== null;
-  const isSettingsRoute = pathname === '/channels/me/settings' || pathname === '/channels/@me/settings';
+  const serverRoute = getServerRoute(pathname);
+  const isServerRoute = serverRoute !== null;
+  const isAccountSettingsRoute = pathname === '/channels/me/settings' || pathname === '/channels/@me/settings';
+  const isSettingsRoute = isAccountSettingsRoute || serverRoute?.channelId === 'settings';
 
   return (
     <WebSocketProvider>

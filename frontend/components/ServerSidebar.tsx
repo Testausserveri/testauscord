@@ -501,7 +501,7 @@ export function ServerSidebar() {
                 Banned users
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onSelect={() => setAction('settings')}>
+            <DropdownMenuItem disabled={!server} onSelect={() => server && router.push(`/channels/${server.id}/settings`)}>
               <Settings />
               Server settings
             </DropdownMenuItem>
