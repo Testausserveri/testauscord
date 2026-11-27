@@ -9,13 +9,12 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, 
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, LogOut, MessageCircle, Plus, Settings, UserPlus } from 'lucide-react';
+import { LogOut, MessageCircle, Plus, Settings, UserPlus } from 'lucide-react';
 import { createServer, getPendingRequests, getServers, getUser, joinServer, logout, reorderServers } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
 import { firstChannel, getServerRoute } from '@/lib/serverRoutes';
-import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { serverSettingsTabs } from '@/lib/serverSettings';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { logoutToLogin } from '@/lib/logout';
@@ -33,7 +32,6 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
   const channel = firstChannel(server);
   const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
-  const canBanMembers = hasPermission(server, PERMISSIONS.BAN_MEMBERS);
 
   return (
     <div
@@ -59,12 +57,6 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
             Invite people
           </ContextMenuItem>
           <ContextMenuSeparator />
-          {canBanMembers && (
-            <ContextMenuItem onSelect={() => onAction('bans')}>
-              <Ban />
-              Banned users
-            </ContextMenuItem>
-          )}
           {serverSettingsTabs(server).length > 0 && (
             <ContextMenuItem onSelect={() => onAction('settings')}>
               <Settings />

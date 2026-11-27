@@ -10,7 +10,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, ChevronDown, FolderPlus, Hash, LogOut, Pencil, Plus, Settings, Ticket, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, FolderPlus, Hash, LogOut, Pencil, Plus, Settings, Ticket, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { createCategory, createChannel, deleteCategory, getServers, getUser, renameChannel, updateCategory, updateServerLayout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
@@ -259,7 +259,6 @@ export function ServerSidebar() {
   const isOwner = Boolean(server && user && server.ownerId === user.id);
   const canManageChannels = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_CHANNELS));
   const canManageInvites = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_INVITES));
-  const canBanMembers = Boolean(server && hasPermission(server, PERMISSIONS.BAN_MEMBERS));
   const layout = server ? groupServer(server) : null;
   const categories = layout?.categories ?? [];
   const channelsById = new Map(server?.channels.map((channel) => [channel.id, channel]) ?? []);
@@ -481,12 +480,6 @@ export function ServerSidebar() {
               Invite people
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {canBanMembers && (
-              <DropdownMenuItem onSelect={() => setAction('bans')}>
-                <Ban />
-                Banned users
-              </DropdownMenuItem>
-            )}
             {server && serverSettingsTabs(server).length > 0 && (
               <DropdownMenuItem onSelect={() => router.push(`/channels/${server.id}/settings`)}>
                 <Settings />

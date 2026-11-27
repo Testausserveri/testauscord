@@ -1,7 +1,7 @@
 import { PERMISSIONS, hasPermission } from './permissions';
 import type { Server } from '@/types/types';
 
-export type ServerSettingsTab = 'overview' | 'roles' | 'members' | 'invites';
+export type ServerSettingsTab = 'overview' | 'roles' | 'members' | 'invites' | 'bans';
 
 export const serverSettingsTabs = (server: Server): ServerSettingsTab[] => {
   const tabs: ServerSettingsTab[] = [];
@@ -16,5 +16,6 @@ export const serverSettingsTabs = (server: Server): ServerSettingsTab[] => {
     tabs.push('members');
   }
   if (hasPermission(server, PERMISSIONS.MANAGE_INVITES)) tabs.push('invites');
+  if (hasPermission(server, PERMISSIONS.BAN_MEMBERS)) tabs.push('bans');
   return tabs;
 };

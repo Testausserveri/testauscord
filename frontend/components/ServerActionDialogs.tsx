@@ -10,7 +10,6 @@ import { Server, ServerAction, ServerInvite } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
-import { ServerBansDialog } from './ServerBansDialog';
 
 type Props = {
   server: Server | null;
@@ -206,8 +205,6 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {action === 'bans' && <ServerBansDialog server={server} onClose={close} />}
     </>
   );
 }

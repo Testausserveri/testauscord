@@ -21,5 +21,12 @@ test('tabs follow permissions', () => {
   expect(serverSettingsTabs(server(PERMISSIONS.KICK_MEMBERS))).toEqual(['members']);
   expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_ROLES))).toEqual(['roles', 'members']);
   expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_INVITES))).toEqual(['invites']);
-  expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_SERVER | PERMISSIONS.MANAGE_ROLES | PERMISSIONS.VIEW_MEMBERS | PERMISSIONS.MANAGE_INVITES))).toEqual(['overview', 'roles', 'members', 'invites']);
+  expect(serverSettingsTabs(server(PERMISSIONS.BAN_MEMBERS))).toEqual(['members', 'bans']);
+  expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_SERVER | PERMISSIONS.MANAGE_ROLES | PERMISSIONS.VIEW_MEMBERS | PERMISSIONS.MANAGE_INVITES | PERMISSIONS.BAN_MEMBERS))).toEqual([
+    'overview',
+    'roles',
+    'members',
+    'invites',
+    'bans',
+  ]);
 });

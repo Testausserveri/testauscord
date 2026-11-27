@@ -15,9 +15,10 @@ import { OverviewTab } from '@/components/server-settings/OverviewTab';
 import { RolesTab } from '@/components/server-settings/RolesTab';
 import { MembersTab } from '@/components/server-settings/MembersTab';
 import { InvitesTab } from '@/components/server-settings/InvitesTab';
+import { BansTab } from '@/components/server-settings/BansTab';
 
-const TABS: ServerSettingsTab[] = ['overview', 'roles', 'members', 'invites'];
-const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles', members: 'Members', invites: 'Invites' };
+const TABS: ServerSettingsTab[] = ['overview', 'roles', 'members', 'invites', 'bans'];
+const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles', members: 'Members', invites: 'Invites', bans: 'Bans' };
 
 const isServerSettingsTab = (value: string | null): value is ServerSettingsTab => value !== null && TABS.includes(value as ServerSettingsTab);
 
@@ -122,6 +123,9 @@ function ServerSettingsContent() {
             </TabsContent>
             <TabsContent value="invites" className="min-w-0 flex-1">
               <InvitesTab server={server} />
+            </TabsContent>
+            <TabsContent value="bans" className="min-w-0 flex-1">
+              <BansTab server={server} />
             </TabsContent>
           </div>
         </Tabs>
