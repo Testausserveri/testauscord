@@ -4,9 +4,9 @@ import { Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { getFriends, getPendingRequests } from '@/api/api';
+import { getDms, getPendingRequests } from '@/api/api';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
-import { Friend, IncomingFriendRequest } from '@/types/types';
+import { DmConversation, IncomingFriendRequest } from '@/types/types';
 import { useQuery } from '@tanstack/react-query';
 import { UserAvatar } from './UserAvatar';
 import { UserPanel } from './UserPanel';
@@ -23,9 +23,9 @@ export function DmsSidebar() {
   const pathname = usePathname();
   const { state } = useSidebar();
 
-  const { data } = useQuery({
-    queryKey: ['friends'],
-    queryFn: getFriends,
+  const { data } = useQuery<DmConversation[]>({
+    queryKey: ['dms'],
+    queryFn: getDms,
     staleTime: 1000 * 20,
   });
 
@@ -35,7 +35,6 @@ export function DmsSidebar() {
     staleTime: 1000 * 20,
   });
 
-  const friends = data ? [...data].sort((a, b) => (a.friend.displayName ?? a.friend.username).localeCompare(b.friend.displayName ?? b.friend.username)) : undefined;
   const pendingCount = pending?.length ?? 0;
 
   return (
@@ -70,19 +69,20 @@ export function DmsSidebar() {
           <SidebarGroupLabel>Direct Messages</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {friends?.map((friend: Friend) => (
-                <SidebarMenuItem key={friend.friend.id}>
-                  <SidebarMenuButton asChild isActive={pathname === `/channels/@me/${friend.id}`}>
-                    <Link href={`/channels/@me/${friend.id}`} data-avatar-hover className="py-5">
-                      <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
+              {data?.map((dm) => (
+                <SidebarMenuItem key={dm.channelId}>
+                  <SidebarMenuButton asChild isActive={pathname === `/channels/@me/${dm.channelId}`}>
+                    <Link href={`/channels/@me/${dm.channelId}`} data-avatar-hover className="py-5">
+                      <UserAvatar user={dm.user} className="h-8 w-8 mr-3" />
                       <div className="flex-1">
-                        <p className="font-semibold">{friend.friend.displayName ?? friend.friend.username}</p>
+                        <p className="font-semibold">{dm.user.displayName ?? dm.user.username}</p>
                       </div>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
+            {data?.length === 0 && <p className="px-2 py-1 text-sm text-muted-foreground">No direct messages yet. Message someone from a server.</p>}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

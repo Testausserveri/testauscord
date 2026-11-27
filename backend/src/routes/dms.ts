@@ -3,7 +3,6 @@ import type { Variables } from '../types/types';
 import { ChannelType } from '../generated/prisma/client';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
-import { eventBus } from '../realtime/bus';
 import { canStartDm, directChannelKey } from '../services/directMessages';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
@@ -20,8 +19,16 @@ const isUniqueConstraintError = (error: unknown): boolean => {
 
 const ensureMembers = async (channelId: string, viewerId: string, targetId: string) => {
   await prisma.channelMember.createMany({
-    data: [viewerId, targetId].map((userId) => ({ id: generateId(), channelId, userId })),
+    data: [
+      { id: generateId(), channelId, userId: viewerId, dmVisible: true },
+      { id: generateId(), channelId, userId: targetId, dmVisible: false },
+    ],
     skipDuplicates: true,
+  });
+
+  await prisma.channelMember.updateMany({
+    where: { channelId, userId: viewerId },
+    data: { dmVisible: true },
   });
 };
 
@@ -77,14 +84,15 @@ app.post('/', async (c) => {
       });
 
       await tx.channelMember.createMany({
-        data: [viewerId, targetId].map((userId) => ({ id: generateId(), channelId: created.id, userId })),
+        data: [
+          { id: generateId(), channelId: created.id, userId: viewerId, dmVisible: true },
+          { id: generateId(), channelId: created.id, userId: targetId, dmVisible: false },
+        ],
         skipDuplicates: true,
       });
 
       return created;
     });
-
-    eventBus.publish({ type: 'DM_CREATE', channelId: channel.id, recipientIds: [viewerId, targetId] });
 
     return c.json({ channelId: channel.id }, 201);
   } catch (error) {
@@ -112,7 +120,7 @@ app.get('/', async (c) => {
   if (limited) return limited;
 
   const channels = await prisma.channel.findMany({
-    where: { type: ChannelType.DM, members: { some: { userId: viewerId } } },
+    where: { type: ChannelType.DM, members: { some: { userId: viewerId, dmVisible: true } } },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: {
       id: true,

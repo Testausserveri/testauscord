@@ -20,7 +20,7 @@ export function FriendsList() {
 
       <div className="gap-1 flex flex-col">
         {friends?.map((friend: Friend) => (
-          <FriendCard key={friend.id} friend={friend} />
+          <FriendCard key={friend.friendshipId} friend={friend} />
         ))}
       </div>
     </div>

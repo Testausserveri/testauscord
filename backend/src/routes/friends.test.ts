@@ -8,7 +8,7 @@ type UserRow = { id: string; username: string; displayName: string | null; avata
 type RequestRow = { id: string; senderId: string; receiverId: string; createdAt: Date };
 type FriendshipRow = { id: string; userAId: string; userBId: string; createdAt: Date };
 type ChannelRow = { id: string; dmKey: string };
-type MemberRow = { channelId: string; userId: string };
+type MemberRow = { channelId: string; userId: string; dmVisible?: boolean };
 type RequestWhere = { id?: string; senderId?: string; receiverId?: string };
 type FriendshipWhere = { userAId_userBId: { userAId: string; userBId: string } };
 
@@ -96,11 +96,23 @@ const upsertChannel = mock(async ({ where, create }: { where: { dmKey: string };
   return row;
 });
 
-const createChannelMembers = mock(async ({ data }: { data: MemberRow[] }) => {
+const createChannelMembers = mock(async ({ data }: { data: { channelId: string; userId: string }[] }) => {
   for (const row of data) {
-    if (!members.some((entry) => entry.channelId === row.channelId && entry.userId === row.userId)) members.push(row);
+    if (!members.some((entry) => entry.channelId === row.channelId && entry.userId === row.userId)) members.push({ ...row, dmVisible: true });
   }
   return { count: data.length };
+});
+
+const updateChannelMembers = mock(async ({ where, data }: { where: { channelId: string }; data: { dmVisible: boolean } }) => {
+  let count = 0;
+
+  for (const entry of members) {
+    if (entry.channelId !== where.channelId) continue;
+    entry.dmVisible = data.dmVisible;
+    count++;
+  }
+
+  return { count };
 });
 
 const prismaMock = {
@@ -113,7 +125,7 @@ const prismaMock = {
   },
   friendship: { findUnique: findFriendship, upsert: upsertFriendship, delete: deleteFriendship },
   channel: { upsert: upsertChannel },
-  channelMember: { createMany: createChannelMembers },
+  channelMember: { createMany: createChannelMembers, updateMany: updateChannelMembers },
 };
 
 const transaction = async <T>(run: (tx: typeof prismaMock) => Promise<T>) => {
@@ -282,6 +294,7 @@ test('accepts a request, creates the friendship and DM, and removes the reverse 
   expect(channels[0]!.dmKey).toBe(`${alice.id}:${bob.id}`);
   expect(members).toHaveLength(2);
   expect(members.map((member) => member.userId).sort()).toEqual([alice.id, bob.id].sort());
+  expect(members.every((member) => member.dmVisible)).toBe(true);
   expect(events).toEqual([{ type: 'FRIEND_REQUEST_REMOVE', requestId: request.id, reason: 'accepted', recipientIds: [bob.id, alice.id] }]);
 });
 

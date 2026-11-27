@@ -11,7 +11,7 @@ type UserRow = {
   allowDmsFromServerMembers: boolean;
 };
 type ChannelRow = { id: string; dmKey: string; type: string; createdAt: Date };
-type MemberRow = { channelId: string; userId: string };
+type MemberRow = { channelId: string; userId: string; dmVisible: boolean };
 
 const alice: UserRow = { id: 'user-alice', username: 'alice', displayName: 'Alice', avatarVersion: null, allowDmsFromServerMembers: true };
 const bob: UserRow = { id: 'user-bob', username: 'bob', displayName: null, avatarVersion: null, allowDmsFromServerMembers: true };
@@ -49,11 +49,12 @@ const findChannel = mock(async ({ where }: { where: { dmKey: string } }) => {
   return channel ? { id: channel.id } : null;
 });
 
-const findChannels = mock(async ({ where }: { where: { type: string; members: { some: { userId: string } } } }) => {
+const findChannels = mock(async ({ where }: { where: { type: string; members: { some: { userId: string; dmVisible: boolean } } } }) => {
   const viewerId = where.members.some.userId;
+  const visible = where.members.some.dmVisible;
 
   return channels
-    .filter((channel) => channel.type === where.type && members.some((entry) => entry.channelId === channel.id && entry.userId === viewerId))
+    .filter((channel) => channel.type === where.type && members.some((entry) => entry.channelId === channel.id && entry.userId === viewerId && entry.dmVisible === visible))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((channel) => ({
       id: channel.id,
@@ -89,12 +90,25 @@ const createChannelMembers = mock(async ({ data }: { data: MemberRow[] }) => {
   return { count: data.length };
 });
 
+const updateChannelMembers = mock(async ({ where, data }: { where: { channelId: string; userId?: string }; data: { dmVisible: boolean } }) => {
+  let count = 0;
+
+  for (const entry of members) {
+    if (entry.channelId !== where.channelId) continue;
+    if (where.userId !== undefined && entry.userId !== where.userId) continue;
+    entry.dmVisible = data.dmVisible;
+    count++;
+  }
+
+  return { count };
+});
+
 const prismaMock = {
   user: { findUnique: findUser },
   friendship: { findUnique: findFriendship },
   serverMember: { findFirst: findServerMember },
   channel: { findUnique: findChannel, findMany: findChannels, create: createChannel },
-  channelMember: { createMany: createChannelMembers },
+  channelMember: { createMany: createChannelMembers, updateMany: updateChannelMembers },
 };
 
 mock.module('../db', () => ({
@@ -133,7 +147,7 @@ const unauthenticated = new Hono<{ Variables: Variables }>();
 unauthenticated.route('/dms', dmsRoute);
 
 beforeEach(() => {
-  users = [alice, bob, carol];
+  users = [alice, bob, carol].map((user) => ({ ...user }));
   friendships = [];
   sharedServer = null;
   channels = [];
@@ -181,14 +195,16 @@ test('creates a DM between friends and returns the existing channel', async () =
   expect(channels).toHaveLength(1);
   expect(channels[0]!.dmKey).toBe(dmKey(alice.id, bob.id));
   expect(members.map((entry) => entry.userId).sort()).toEqual([alice.id, bob.id].sort());
-  expect(events).toEqual([{ type: 'DM_CREATE', channelId, recipientIds: [alice.id, bob.id] }]);
+  expect(members.find((entry) => entry.userId === alice.id)!.dmVisible).toBe(true);
+  expect(members.find((entry) => entry.userId === bob.id)!.dmVisible).toBe(false);
+  expect(events).toEqual([]);
 
   const second = await post(app, { userId: bob.id });
 
   expect(second.status).toBe(200);
   expect(((await second.json()) as { channelId: string }).channelId).toBe(channelId);
   expect(channels).toHaveLength(1);
-  expect(events).toHaveLength(1);
+  expect(events).toEqual([]);
 });
 
 test('allows shared-server members and blocks them when privacy is off', async () => {
@@ -254,6 +270,19 @@ test('returns the raced channel when two creates collide', async () => {
   expect(members.map((entry) => entry.userId).sort()).toEqual([alice.id, bob.id].sort());
 });
 
+test('shows a new DM to the initiator and hides it from the other member', async () => {
+  sharedServer = { id: 'member-1', banned: false };
+
+  const created = await post(createApp(alice), { userId: bob.id });
+  const { channelId } = (await created.json()) as { channelId: string };
+
+  const forAlice = await createApp(alice).request('/dms');
+  expect(((await forAlice.json()) as { channelId: string }[]).map((dm) => dm.channelId)).toEqual([channelId]);
+
+  const forBob = await createApp(bob).request('/dms');
+  expect(await forBob.json()).toEqual([]);
+});
+
 test('lists only the viewer DMs, newest first, and includes friend DMs', async () => {
   const older = new Date('2026-01-01T00:00:00.000Z');
   const newer = new Date('2026-02-01T00:00:00.000Z');
@@ -261,17 +290,20 @@ test('lists only the viewer DMs, newest first, and includes friend DMs', async (
   channels = [
     { id: 'channel-bob', dmKey: dmKey(alice.id, bob.id), type: 'DM', createdAt: older },
     { id: 'channel-carol', dmKey: dmKey(alice.id, carol.id), type: 'DM', createdAt: newer },
+    { id: 'channel-hidden', dmKey: dmKey(alice.id, 'user-hidden'), type: 'DM', createdAt: new Date('2026-03-01T00:00:00.000Z') },
     { id: 'channel-bob-carol', dmKey: dmKey(bob.id, carol.id), type: 'DM', createdAt: newer },
     { id: 'channel-orphan', dmKey: dmKey(alice.id, 'user-gone'), type: 'DM', createdAt: new Date('2026-03-01T00:00:00.000Z') },
   ];
   members = [
-    { channelId: 'channel-bob', userId: alice.id },
-    { channelId: 'channel-bob', userId: bob.id },
-    { channelId: 'channel-carol', userId: alice.id },
-    { channelId: 'channel-carol', userId: carol.id },
-    { channelId: 'channel-bob-carol', userId: bob.id },
-    { channelId: 'channel-bob-carol', userId: carol.id },
-    { channelId: 'channel-orphan', userId: alice.id },
+    { channelId: 'channel-bob', userId: alice.id, dmVisible: true },
+    { channelId: 'channel-bob', userId: bob.id, dmVisible: true },
+    { channelId: 'channel-carol', userId: alice.id, dmVisible: true },
+    { channelId: 'channel-carol', userId: carol.id, dmVisible: false },
+    { channelId: 'channel-hidden', userId: alice.id, dmVisible: false },
+    { channelId: 'channel-hidden', userId: 'user-hidden', dmVisible: true },
+    { channelId: 'channel-bob-carol', userId: bob.id, dmVisible: true },
+    { channelId: 'channel-bob-carol', userId: carol.id, dmVisible: true },
+    { channelId: 'channel-orphan', userId: alice.id, dmVisible: true },
   ];
 
   const response = await createApp(alice).request('/dms');

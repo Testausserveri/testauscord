@@ -5,6 +5,8 @@ import type {
   AccountDTO,
   AccountSession,
   CurrentUser,
+  DmConversation,
+  Friend,
   IncomingFriendRequest,
   OutgoingFriendRequest,
   ProfileDTO,
@@ -112,8 +114,16 @@ export const updateProfile = async (patch: ProfilePatch): Promise<AccountDTO> =>
   return await axios.patch(`${API_URL}/users/@me`, patch, { withCredentials: true }).then((res) => res.data);
 };
 
-export const getFriends = async () => {
+export const getFriends = async (): Promise<Friend[]> => {
   return await axios.get(`${API_URL}/friends`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const getDms = async (): Promise<DmConversation[]> => {
+  return await axios.get(`${API_URL}/dms`, { withCredentials: true }).then((res) => res.data);
+};
+
+export const startDm = async (userId: string): Promise<{ channelId: string }> => {
+  return await axios.post(`${API_URL}/dms`, { userId }, { withCredentials: true }).then((res) => res.data);
 };
 
 export const getPendingRequests = async (): Promise<IncomingFriendRequest[]> => {

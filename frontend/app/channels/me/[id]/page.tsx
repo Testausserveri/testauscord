@@ -1,6 +1,6 @@
 'use client';
 
-import { getFriends } from '@/api/api';
+import { getDms } from '@/api/api';
 import { DirectMessage } from '@/components/DirectMessage';
 import Loader from '@/components/Loader';
 import { useQuery } from '@tanstack/react-query';
@@ -10,8 +10,8 @@ export default function DirectMessages() {
   const params = useParams();
 
   const { isPending } = useQuery({
-    queryKey: ['friends'],
-    queryFn: getFriends,
+    queryKey: ['dms'],
+    queryFn: getDms,
     staleTime: 1000 * 20,
   });
 

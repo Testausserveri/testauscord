@@ -189,6 +189,11 @@ app.post('/respondToRequest', async (c) => {
       skipDuplicates: true,
     });
 
+    await tx.channelMember.updateMany({
+      where: { channelId: channel.id },
+      data: { dmVisible: true },
+    });
+
     await tx.friendship.upsert({
       where: { userAId_userBId: pair },
       create: {

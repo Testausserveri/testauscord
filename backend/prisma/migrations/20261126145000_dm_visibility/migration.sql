@@ -1,0 +1,1 @@
+ALTER TABLE "ChannelMember" ADD COLUMN "dmVisible" BOOLEAN NOT NULL DEFAULT true;

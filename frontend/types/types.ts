@@ -38,8 +38,16 @@ export type ServerAction = 'invite' | 'invites' | 'members' | 'leave' | 'setting
 
 export type Friend = {
   id: string;
+  channelId: string;
+  friendshipId: string;
   friendsSince: string;
   friend: UserRef;
+};
+
+export type DmConversation = {
+  channelId: string;
+  user: UserRef;
+  createdAt: string;
 };
 
 export type IncomingFriendRequest = {

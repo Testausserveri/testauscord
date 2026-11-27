@@ -207,6 +207,7 @@ model ChannelMember {
   id String @id
   channelId String
   userId String
+  dmVisible Boolean @default(true)
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

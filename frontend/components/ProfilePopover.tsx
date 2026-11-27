@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { getFriends, getPendingRequests, getSentRequests, getUser, getUserProfile } from '@/api/api';
-import type { CurrentUser, Friend, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO } from '@/types/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { getPendingRequests, getSentRequests, getUser, getUserProfile, startDm } from '@/api/api';
+import { apiErrorMessage } from '@/lib/apiError';
+import type { CurrentUser, IncomingFriendRequest, OutgoingFriendRequest, ProfileDTO } from '@/types/types';
 import { Button } from './ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
 import { UserAvatar } from './UserAvatar';
@@ -22,6 +24,8 @@ type Props = {
 
 export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [openingDm, setOpeningDm] = useState(false);
   const open = Boolean(target);
   const userId = target?.userId ?? null;
   const anchorRef = useMemo(() => ({ current: target?.anchor ?? null }), [target?.anchor]);
@@ -44,13 +48,6 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
     retry: false,
   });
 
-  const { data: friends } = useQuery<Friend[]>({
-    queryKey: ['friends'],
-    queryFn: getFriends,
-    enabled: open,
-    staleTime: 1000 * 20,
-  });
-
   const { data: incoming } = useQuery<IncomingFriendRequest[]>({
     queryKey: ['friend-requests-pending'],
     queryFn: getPendingRequests,
@@ -66,15 +63,26 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
   });
 
   const isSelf = Boolean(profile && currentUser && profile.id === currentUser.id);
-  const friendship = profile ? friends?.find((entry) => entry.friend.id === profile.id) : undefined;
+  const canDm = profile?.canDm === true;
+  const dmBlocked = profile?.canDm === false;
   const isOutgoing = profile ? outgoing?.some((entry) => entry.receiver.id === profile.id) : false;
   const isIncoming = profile ? incoming?.some((entry) => entry.sender.id === profile.id) : false;
 
-  const openDm = () => {
-    if (!friendship) return;
+  const openDm = async () => {
+    if (!profile || openingDm) return;
 
-    onClose();
-    router.push(`/channels/@me/${friendship.id}`);
+    setOpeningDm(true);
+
+    try {
+      const { channelId } = await startDm(profile.id);
+      await queryClient.invalidateQueries({ queryKey: ['dms'] });
+      onClose();
+      router.push(`/channels/@me/${channelId}`);
+    } catch (caught) {
+      toast.error(apiErrorMessage(caught));
+    } finally {
+      setOpeningDm(false);
+    }
   };
 
   const respondFromFriends = () => {
@@ -82,7 +90,7 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
     router.push('/channels/@me');
   };
 
-  const hasActions = !isSelf && Boolean(friendship || isOutgoing || isIncoming);
+  const hasActions = !isSelf && Boolean(canDm || dmBlocked || isOutgoing || isIncoming);
 
   return (
     <Popover open={open} onOpenChange={(next) => !next && onClose()}>
@@ -113,18 +121,20 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
                     <Button type="button" onClick={onEditProfile}>
                       Edit profile
                     </Button>
-                  ) : friendship ? (
-                    <Button type="button" onClick={openDm}>
+                  ) : canDm ? (
+                    <Button type="button" onClick={openDm} disabled={openingDm}>
                       Message
                     </Button>
                   ) : isOutgoing ? (
                     <Button type="button" variant="secondary" disabled>
                       Request pending
                     </Button>
-                  ) : (
+                  ) : isIncoming ? (
                     <Button type="button" onClick={respondFromFriends}>
                       Respond from Friends
                     </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Messages from server members are off</p>
                   )}
                 </div>
               )}

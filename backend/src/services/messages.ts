@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { ChannelType } from '../generated/prisma/client';
 import { eventBus } from '../realtime/bus';
 import type { MessageDTO } from '../realtime/protocol';
 import { generateId } from '../utils/utils';
@@ -41,6 +42,25 @@ export const buildMessagePage = <T extends { id: string }>(rows: T[], limit: num
   };
 };
 
+const publishDmCreateOnFirstMessage = async (channelId: string) => {
+  const channel = await prisma.channel.findFirst({
+    where: { id: channelId, type: ChannelType.DM },
+    select: {
+      members: { select: { userId: true } },
+      _count: { select: { messages: true } },
+    },
+  });
+
+  if (!channel || channel._count.messages !== 1) return;
+
+  await prisma.channelMember.updateMany({
+    where: { channelId },
+    data: { dmVisible: true },
+  });
+
+  eventBus.publish({ type: 'DM_CREATE', channelId, recipientIds: channel.members.map((member) => member.userId) });
+};
+
 export const createChannelMessage = async (input: { channelId: string; senderId: string; content: string; clientNonce: string }) => {
   const { channelId, senderId, content, clientNonce } = input;
 
@@ -81,6 +101,7 @@ export const createChannelMessage = async (input: { channelId: string; senderId:
 
     const dto = toMessageDto(message);
     eventBus.publish({ type: 'MESSAGE_CREATE', channelId, message: dto });
+    await publishDmCreateOnFirstMessage(channelId);
 
     return { message: dto, created: true };
   } catch (error) {
