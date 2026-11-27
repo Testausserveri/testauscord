@@ -6,9 +6,8 @@ import type { Prisma } from '../generated/prisma/client';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
-import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
-import { getMemberAccess, hasUnknownPermissionBits, requirePermission, PERMISSIONS } from '../services/permissions';
+import { ALL_PERMISSIONS, getMemberAccess, hasUnknownPermissionBits, requirePermission, PERMISSIONS } from '../services/permissions';
 import { planCategoryDelete, planChannelAssign, planLayout, nextPosition, type ChannelPlacement } from '../services/serverLayout';
 import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
 import { nextServerPosition } from '../services/serverOrder';
@@ -93,7 +92,7 @@ const roleSelect = { id: true, name: true, color: true, permissions: true, posit
 
 const findManageableServer = (serverId: string, userId: string) =>
   prisma.server.findFirst({
-    where: { id: serverId, members: { some: { userId } } },
+    where: { id: serverId, members: { some: { userId } }, bans: { none: { userId } } },
     select: { id: true, ownerId: true },
   });
 
@@ -195,11 +194,14 @@ app.post('/create', async (c) => {
       channels: {
         create: { id: generateId(), name: 'general', type: 'TEXT' },
       },
+      roles: {
+        create: { id: generateId(), name: '@everyone', position: 0, isDefault: true },
+      },
     },
     select: serverSelect,
   });
 
-  return c.json(server, 201);
+  return c.json({ ...server, myPermissions: ALL_PERMISSIONS, myHighestRolePosition: 1_000_000 }, 201);
 });
 
 app.get('/', async (c) => {
@@ -212,11 +214,26 @@ app.get('/', async (c) => {
   const memberships = await prisma.serverMember.findMany({
     where: { userId, server: { bans: { none: { userId } } } },
     orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }, { id: 'asc' }],
-    select: { server: { select: serverSelect } },
+    select: {
+      server: {
+        select: {
+          ...serverSelect,
+          roles: { where: { isDefault: true }, select: { permissions: true }, take: 1 },
+        },
+      },
+      roles: { select: { role: { select: { permissions: true, position: true } } } },
+    },
   });
 
   return c.json(
-    memberships.map((membership) => membership.server),
+    memberships.map(({ server, roles }) => {
+      const { roles: defaultRoles, ...rest } = server;
+      const isOwner = server.ownerId === userId;
+      const myPermissions = isOwner ? ALL_PERMISSIONS : roles.reduce((bits, entry) => bits | entry.role.permissions, defaultRoles[0]?.permissions ?? 0);
+      const myHighestRolePosition = isOwner ? 1_000_000 : roles.reduce((highest, entry) => Math.max(highest, entry.role.position), 0);
+
+      return { ...rest, myPermissions, myHighestRolePosition };
+    }),
     200,
   );
 });
@@ -285,7 +302,12 @@ app.post('/join', async (c) => {
       expiresAt: true,
       channelId: true,
       channel: { select: { id: true, serverId: true } },
-      server: { select: serverSelect },
+      server: {
+        select: {
+          ...serverSelect,
+          roles: { where: { isDefault: true }, select: { permissions: true }, take: 1 },
+        },
+      },
     },
   });
 
@@ -295,6 +317,11 @@ app.post('/join', async (c) => {
   }
 
   const inviteChannelId = invite.channel && invite.channel.serverId === invite.serverId ? invite.channel.id : null;
+
+  const joinPayload = (status: 200 | 201) => {
+    const { roles, ...server } = invite.server;
+    return c.json({ ...server, inviteChannelId, myPermissions: roles[0]?.permissions ?? 0, myHighestRolePosition: 0 }, status);
+  };
 
   if (await getBan(invite.serverId, userId)) {
     return c.text('You are banned from this server', 403);
@@ -306,7 +333,7 @@ app.post('/join', async (c) => {
   });
 
   if (existing) {
-    return c.json({ ...invite.server, inviteChannelId }, 200);
+    return joinPayload(200);
   }
 
   const memberships = await prisma.serverMember.count({ where: { userId } });
@@ -322,13 +349,13 @@ app.post('/join', async (c) => {
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
-    return c.json({ ...invite.server, inviteChannelId }, 201);
+    return joinPayload(201);
   }
 
   const members = await prisma.serverMember.findMany({ where: { serverId: invite.serverId }, select: { userId: true } });
   eventBus.publish({ type: 'SERVER_MEMBER_ADDED', serverId: invite.serverId, recipientIds: members.map((member) => member.userId) });
 
-  return c.json({ ...invite.server, inviteChannelId }, 201);
+  return joinPayload(201);
 });
 
 app.get('/:id', async (c) => {
@@ -336,14 +363,21 @@ app.get('/:id', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
+  const userId = c.get('user')!.id;
+
   const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } }, bans: { none: { userId: c.get('user')!.id } } },
+    where: { id: c.req.param('id'), members: { some: { userId } }, bans: { none: { userId } } },
     select: {
       ...serverSelect,
+      roles: {
+        select: roleSelect,
+        orderBy: { position: 'asc' },
+      },
       members: {
         select: {
           joinedAt: true,
           user: { select: { id: true, username: true, displayName: true, avatarVersion: true } },
+          roles: { select: { roleId: true, role: { select: { permissions: true, position: true } } } },
         },
         orderBy: { joinedAt: 'asc' },
       },
@@ -354,16 +388,32 @@ app.get('/:id', async (c) => {
     return c.text('Server not found', 404);
   }
 
+  const viewer = server.members.find((member) => member.user.id === userId);
+
+  if (!viewer) {
+    return c.text('Server not found', 404);
+  }
+
+  const isOwner = server.ownerId === userId;
+  const defaultPermissions = server.roles.find((role) => role.isDefault)?.permissions ?? 0;
+  const myPermissions = isOwner ? ALL_PERMISSIONS : viewer.roles.reduce((bits, entry) => bits | entry.role.permissions, defaultPermissions);
+  const myHighestRolePosition = isOwner ? 1_000_000 : viewer.roles.reduce((highest, entry) => Math.max(highest, entry.role.position), 0);
+  const canManageRoles = (myPermissions & PERMISSIONS.MANAGE_ROLES) === PERMISSIONS.MANAGE_ROLES;
+
   return c.json(
     {
       ...server,
+      roles: server.roles.map((role) => ({ ...role, permissions: canManageRoles ? role.permissions : 0 })),
       members: server.members.map((member) => ({
         id: member.user.id,
         username: member.user.username,
         displayName: member.user.displayName,
         avatarVersion: member.user.avatarVersion,
         joinedAt: member.joinedAt,
+        roleIds: member.roles.map((entry) => entry.roleId),
       })),
+      myPermissions,
+      myHighestRolePosition,
     },
     200,
   );
@@ -413,19 +463,13 @@ app.put('/:id/layout', async (c) => {
     return c.text('Invalid layout', 400);
   }
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can manage the layout', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   const [categories, channels] = await Promise.all([
-    prisma.channelCategory.findMany({ where: { serverId: server.id }, select: { id: true, position: true } }),
-    prisma.channel.findMany({ where: { serverId: server.id }, select: { id: true, categoryId: true, position: true } }),
+    prisma.channelCategory.findMany({ where: { serverId }, select: { id: true, position: true } }),
+    prisma.channel.findMany({ where: { serverId }, select: { id: true, categoryId: true, position: true } }),
   ]);
 
   const plan = planLayout(categories, channels, result.data);
@@ -441,7 +485,7 @@ app.put('/:id/layout', async (c) => {
     ]);
   }
 
-  const layout = await publishServerLayout(server.id);
+  const layout = await publishServerLayout(serverId);
 
   return c.json(layout, 200);
 });
@@ -464,17 +508,17 @@ app.patch('/:id', async (c) => {
 
   const { name, icon, iconPoster } = result.data;
 
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_SERVER);
+  if (access instanceof Response) return access;
+
   const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId } } },
-    select: { id: true, name: true, ownerId: true, iconVersion: true },
+    where: { id: serverId },
+    select: { id: true, name: true, iconVersion: true },
   });
 
   if (!server) {
     return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can edit this server', 403);
   }
 
   const iconUpdate = await parseImageUpdate(icon, iconPoster);
@@ -943,18 +987,12 @@ app.post('/:id/categories', async (c) => {
     return c.text('Invalid category name', 400);
   }
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can manage categories', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   const duplicate = await prisma.channelCategory.findFirst({
-    where: { serverId: server.id, name: { equals: name, mode: 'insensitive' } },
+    where: { serverId, name: { equals: name, mode: 'insensitive' } },
     select: { id: true },
   });
 
@@ -962,13 +1000,13 @@ app.post('/:id/categories', async (c) => {
     return c.text('Category name already in use', 409);
   }
 
-  const count = await prisma.channelCategory.count({ where: { serverId: server.id } });
+  const count = await prisma.channelCategory.count({ where: { serverId } });
   if (count >= MAX_CATEGORIES_PER_SERVER) {
     return c.text('Category limit reached', 409);
   }
 
   const siblings = await prisma.channelCategory.findMany({
-    where: { serverId: server.id },
+    where: { serverId },
     select: { position: true },
   });
 
@@ -976,14 +1014,14 @@ app.post('/:id/categories', async (c) => {
     const category = await prisma.channelCategory.create({
       data: {
         id: generateId(),
-        serverId: server.id,
+        serverId,
         name,
         position: nextPosition(siblings.map((sibling) => sibling.position)),
       },
       select: categorySelect,
     });
 
-    await publishServerLayout(server.id);
+    await publishServerLayout(serverId);
 
     return c.json(category, 201);
   } catch (error) {
@@ -1016,18 +1054,12 @@ app.patch('/:id/categories/:categoryId', async (c) => {
     return c.text('Invalid category name', 400);
   }
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can manage categories', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   const category = await prisma.channelCategory.findFirst({
-    where: { id: c.req.param('categoryId'), serverId: server.id },
+    where: { id: c.req.param('categoryId'), serverId },
     select: categorySelect,
   });
 
@@ -1040,7 +1072,7 @@ app.patch('/:id/categories/:categoryId', async (c) => {
   }
 
   const duplicate = await prisma.channelCategory.findFirst({
-    where: { serverId: server.id, id: { not: category.id }, name: { equals: name, mode: 'insensitive' } },
+    where: { serverId, id: { not: category.id }, name: { equals: name, mode: 'insensitive' } },
     select: { id: true },
   });
 
@@ -1055,7 +1087,7 @@ app.patch('/:id/categories/:categoryId', async (c) => {
       select: categorySelect,
     });
 
-    await publishServerLayout(server.id);
+    await publishServerLayout(serverId);
 
     return c.json(updated, 200);
   } catch (error) {
@@ -1075,18 +1107,12 @@ app.delete('/:id/categories/:categoryId', async (c) => {
   const limited = enforceRateLimit(c, categoryMutationLimiter, userId);
   if (limited) return limited;
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can manage categories', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   const category = await prisma.channelCategory.findFirst({
-    where: { id: c.req.param('categoryId'), serverId: server.id },
+    where: { id: c.req.param('categoryId'), serverId },
     select: { id: true },
   });
 
@@ -1095,7 +1121,7 @@ app.delete('/:id/categories/:categoryId', async (c) => {
   }
 
   const channels = await prisma.channel.findMany({
-    where: { serverId: server.id },
+    where: { serverId },
     select: { id: true, categoryId: true, position: true },
   });
 
@@ -1106,7 +1132,7 @@ app.delete('/:id/categories/:categoryId', async (c) => {
     ...plan.map((entry) => prisma.channel.update({ where: { id: entry.id }, data: { categoryId: null, position: entry.position } })),
   ]);
 
-  await publishServerLayout(server.id);
+  await publishServerLayout(serverId);
 
   return c.body(null, 204);
 });
@@ -1127,21 +1153,15 @@ app.post('/:id/channels', async (c) => {
     return c.text('Invalid channel name', 400);
   }
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can create channels', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   let categoryId: string | null = null;
 
   if (result.data.categoryId !== undefined) {
     const category = await prisma.channelCategory.findFirst({
-      where: { id: result.data.categoryId, serverId: server.id },
+      where: { id: result.data.categoryId, serverId },
       select: { id: true },
     });
 
@@ -1152,13 +1172,13 @@ app.post('/:id/channels', async (c) => {
     categoryId = category.id;
   }
 
-  const channels = await prisma.channel.count({ where: { serverId: server.id } });
+  const channels = await prisma.channel.count({ where: { serverId } });
   if (channels >= MAX_CHANNELS_PER_SERVER) {
     return c.text('Channel limit reached', 409);
   }
 
   const siblings = await prisma.channel.findMany({
-    where: { serverId: server.id, categoryId },
+    where: { serverId, categoryId },
     select: { position: true },
   });
 
@@ -1166,7 +1186,7 @@ app.post('/:id/channels', async (c) => {
     const channel = await prisma.channel.create({
       data: {
         id: generateId(),
-        serverId: server.id,
+        serverId,
         name: result.data.name,
         type: 'TEXT',
         categoryId,
@@ -1175,7 +1195,7 @@ app.post('/:id/channels', async (c) => {
       select: { id: true, name: true, type: true, categoryId: true, position: true },
     });
 
-    await publishServerLayout(server.id);
+    await publishServerLayout(serverId);
 
     return c.json(channel, 201);
   } catch (error) {
@@ -1208,18 +1228,12 @@ app.patch('/:id/channels/:channelId', async (c) => {
     return c.text('Invalid channel update', 400);
   }
 
-  const server = await findManageableServer(c.req.param('id'), userId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, userId)) {
-    return c.text('Only the server owner can manage channels', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_CHANNELS);
+  if (access instanceof Response) return access;
 
   const channel = await prisma.channel.findFirst({
-    where: { id: c.req.param('channelId'), serverId: server.id },
+    where: { id: c.req.param('channelId'), serverId },
     select: { id: true, name: true, type: true, categoryId: true, position: true },
   });
 
@@ -1232,7 +1246,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
 
   if (renaming) {
     const duplicate = await prisma.channel.findFirst({
-      where: { serverId: server.id, id: { not: channel.id }, name },
+      where: { serverId, id: { not: channel.id }, name },
       select: { id: true },
     });
 
@@ -1243,7 +1257,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
 
   if (categoryId !== undefined && categoryId !== null) {
     const category = await prisma.channelCategory.findFirst({
-      where: { id: categoryId, serverId: server.id },
+      where: { id: categoryId, serverId },
       select: { id: true },
     });
 
@@ -1256,7 +1270,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
 
   if (categoryId !== undefined) {
     const channels = await prisma.channel.findMany({
-      where: { serverId: server.id },
+      where: { serverId },
       select: { id: true, categoryId: true, position: true },
     });
 
@@ -1280,7 +1294,7 @@ app.patch('/:id/channels/:channelId', async (c) => {
   }
 
   if (renaming || plan.length > 0) {
-    await publishServerLayout(server.id);
+    await publishServerLayout(serverId);
   }
 
   const moved = plan.find((entry) => entry.id === channel.id);
@@ -1301,21 +1315,12 @@ app.get('/:id/invites', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
-    select: { id: true, ownerId: true },
-  });
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (server.ownerId !== c.get('user')!.id) {
-    return c.text('Only the server owner can manage invites', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, c.get('user')!.id, PERMISSIONS.MANAGE_INVITES);
+  if (access instanceof Response) return access;
 
   const invites = await prisma.serverInvite.findMany({
-    where: { serverId: server.id, expiresAt: { gt: new Date() } },
+    where: { serverId, expiresAt: { gt: new Date() } },
     select: {
       code: true,
       createdAt: true,
@@ -1347,10 +1352,7 @@ app.post('/:id/invites', async (c) => {
 
   const channelId = result.data.channelId ?? null;
 
-  const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId } } },
-    select: { id: true, ownerId: true },
-  });
+  const server = await findManageableServer(c.req.param('id'), userId);
 
   if (!server) {
     return c.text('Server not found', 404);
@@ -1417,25 +1419,16 @@ app.delete('/:id/invites/:code', async (c) => {
     return c.text('This endpoint requires authentication', 401);
   }
 
-  const server = await prisma.server.findFirst({
-    where: { id: c.req.param('id'), members: { some: { userId: c.get('user')!.id } } },
-    select: { id: true, ownerId: true },
-  });
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (server.ownerId !== c.get('user')!.id) {
-    return c.text('Only the server owner can revoke invites', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, c.get('user')!.id, PERMISSIONS.MANAGE_INVITES);
+  if (access instanceof Response) return access;
 
   const invite = await prisma.serverInvite.findUnique({
     where: { code: c.req.param('code') },
     select: { id: true, serverId: true },
   });
 
-  if (!invite || invite.serverId !== server.id) {
+  if (!invite || invite.serverId !== serverId) {
     return c.text('Invite not found', 404);
   }
 
@@ -1453,24 +1446,27 @@ app.delete('/:id/members/:userId', async (c) => {
   const limited = enforceRateLimit(c, moderationLimiter, actorId);
   if (limited) return limited;
 
-  const server = await findManageableServer(c.req.param('id'), actorId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, actorId)) {
-    return c.text('Only the server owner can remove members', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, actorId, PERMISSIONS.KICK_MEMBERS);
+  if (access instanceof Response) return access;
 
   const targetId = c.req.param('userId');
+  const target = await getMemberAccess(serverId, targetId);
 
-  if (targetId === server.ownerId) {
+  if (!target) {
+    return c.text('Member not found', 404);
+  }
+
+  if (target.isOwner) {
     return c.text('The server owner cannot be removed', 400);
   }
 
+  if (!access.isOwner && target.highestPosition > 0 && target.highestPosition >= access.highestPosition) {
+    return c.text('Forbidden', 403);
+  }
+
   const membership = await prisma.serverMember.findUnique({
-    where: { serverId_userId: { serverId: server.id, userId: targetId } },
+    where: { serverId_userId: { serverId, userId: targetId } },
     select: { id: true },
   });
 
@@ -1478,11 +1474,11 @@ app.delete('/:id/members/:userId', async (c) => {
     return c.text('Member not found', 404);
   }
 
-  const channels = await findServerChannels(server.id);
+  const channels = await findServerChannels(serverId);
 
-  await prisma.$transaction([prisma.serverMember.delete({ where: { id: membership.id } }), prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } })]);
+  await prisma.$transaction([prisma.serverMember.delete({ where: { id: membership.id } }), prisma.serverInvite.deleteMany({ where: { serverId, createdById: targetId } })]);
 
-  evictServerMember(server.id, targetId, channels, 'kick');
+  evictServerMember(serverId, targetId, channels, 'kick');
 
   return c.body(null, 204);
 });
@@ -1496,15 +1492,9 @@ app.put('/:id/bans/:userId', async (c) => {
   const limited = enforceRateLimit(c, moderationLimiter, actorId);
   if (limited) return limited;
 
-  const server = await findManageableServer(c.req.param('id'), actorId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, actorId)) {
-    return c.text('Only the server owner can ban members', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, actorId, PERMISSIONS.BAN_MEMBERS);
+  if (access instanceof Response) return access;
 
   const targetId = c.req.param('userId');
 
@@ -1512,13 +1502,19 @@ app.put('/:id/bans/:userId', async (c) => {
     return c.text('You cannot ban yourself', 400);
   }
 
-  if (targetId === server.ownerId) {
+  const target = await getMemberAccess(serverId, targetId);
+
+  if (target?.isOwner) {
     return c.text('The server owner cannot be banned', 400);
   }
 
-  const target = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true } });
+  if (!access.isOwner && target && target.highestPosition > 0 && target.highestPosition >= access.highestPosition) {
+    return c.text('Forbidden', 403);
+  }
 
-  if (!target) {
+  const user = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true } });
+
+  if (!user) {
     return c.text('User not found', 404);
   }
 
@@ -1530,21 +1526,21 @@ app.put('/:id/bans/:userId', async (c) => {
   }
 
   const reason = parsed.data.reason || null;
-  const channels = await findServerChannels(server.id);
+  const channels = await findServerChannels(serverId);
 
   const [, removed] = await prisma.$transaction([
     prisma.serverBan.upsert({
-      where: { serverId_userId: { serverId: server.id, userId: targetId } },
-      create: { id: generateId(), serverId: server.id, userId: targetId, bannedById: actorId, reason },
+      where: { serverId_userId: { serverId, userId: targetId } },
+      create: { id: generateId(), serverId, userId: targetId, bannedById: actorId, reason },
       update: { bannedById: actorId, reason },
       select: { id: true },
     }),
-    prisma.serverMember.deleteMany({ where: { serverId: server.id, userId: targetId } }),
-    prisma.serverInvite.deleteMany({ where: { serverId: server.id, createdById: targetId } }),
+    prisma.serverMember.deleteMany({ where: { serverId, userId: targetId } }),
+    prisma.serverInvite.deleteMany({ where: { serverId, createdById: targetId } }),
   ]);
 
   if (removed.count > 0) {
-    evictServerMember(server.id, targetId, channels, 'ban');
+    evictServerMember(serverId, targetId, channels, 'ban');
   }
 
   return c.body(null, 204);
@@ -1559,17 +1555,11 @@ app.delete('/:id/bans/:userId', async (c) => {
   const limited = enforceRateLimit(c, moderationLimiter, actorId);
   if (limited) return limited;
 
-  const server = await findManageableServer(c.req.param('id'), actorId);
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, actorId, PERMISSIONS.BAN_MEMBERS);
+  if (access instanceof Response) return access;
 
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, actorId)) {
-    return c.text('Only the server owner can unban members', 403);
-  }
-
-  const ban = await getBan(server.id, c.req.param('userId'));
+  const ban = await getBan(serverId, c.req.param('userId'));
 
   if (!ban) {
     return c.text('Ban not found', 404);
@@ -1589,18 +1579,12 @@ app.get('/:id/bans', async (c) => {
   const limited = enforceRateLimit(c, moderationLimiter, actorId);
   if (limited) return limited;
 
-  const server = await findManageableServer(c.req.param('id'), actorId);
-
-  if (!server) {
-    return c.text('Server not found', 404);
-  }
-
-  if (!isServerOwner(server, actorId)) {
-    return c.text('Only the server owner can view bans', 403);
-  }
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, actorId, PERMISSIONS.BAN_MEMBERS);
+  if (access instanceof Response) return access;
 
   const bans = await prisma.serverBan.findMany({
-    where: { serverId: server.id },
+    where: { serverId },
     select: {
       reason: true,
       createdAt: true,

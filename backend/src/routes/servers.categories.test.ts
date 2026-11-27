@@ -113,6 +113,13 @@ const findMembers = mock(async ({ where }: { where: { serverId: string } }) => {
   return (servers.find((entry) => entry.id === where.serverId)?.members ?? []).map((userId) => ({ userId }));
 });
 
+const findAccess = mock(async ({ where }: { where: { serverId: string; userId: string } }) => {
+  const server = servers.find((entry) => entry.id === where.serverId);
+  if (!server || !server.members.includes(where.userId)) return null;
+
+  return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
+});
+
 const createChannel = mock(async ({ data }: { data: { id: string; serverId: string; name: string; type: 'TEXT'; categoryId: string | null; position: number } }) => {
   if (channels.some((entry) => entry.serverId === data.serverId && entry.name === data.name)) throw uniqueError();
 
@@ -150,7 +157,7 @@ const prismaMock = {
     create: createChannel,
     update: updateChannel,
   },
-  serverMember: { findMany: findMembers },
+  serverMember: { findMany: findMembers, findFirst: findAccess },
 };
 
 const transaction = async (operations: Promise<unknown>[]) => Promise.all(operations);

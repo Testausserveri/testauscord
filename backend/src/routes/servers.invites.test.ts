@@ -17,10 +17,9 @@ const toServer = (server: ServerRow) => ({
   iconVersion: null,
   ownerId: server.ownerId,
   createdAt: server.createdAt,
-  channels: channels
-    .filter((channel) => channel.serverId === server.id)
-    .map((channel, position) => ({ id: channel.id, name: channel.name, type: 'TEXT', categoryId: null, position })),
+  channels: channels.filter((channel) => channel.serverId === server.id).map((channel, position) => ({ id: channel.id, name: channel.name, type: 'TEXT', categoryId: null, position })),
   categories: [],
+  roles: [{ id: `role-${server.id}`, name: '@everyone', color: null, permissions: 0, position: 0, isDefault: true }],
 });
 
 const userRef = (id: string) => ({ id, username: id, displayName: null, avatarVersion: null });
@@ -103,7 +102,14 @@ const countMemberships = mock(async ({ where }: { where: { userId: string } }) =
   return servers.filter((server) => server.members.includes(where.userId)).length;
 });
 
-const findLastPosition = mock(async ({ where }: { where: { userId: string } }) => {
+const findLastPosition = mock(async ({ where }: { where: { userId: string; serverId?: string } }) => {
+  if (where.serverId !== undefined) {
+    const server = servers.find((entry) => entry.id === where.serverId);
+    if (!server || !server.members.includes(where.userId)) return null;
+
+    return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
+  }
+
   const memberships = servers.map((server, index) => (server.members.includes(where.userId) ? index : -1)).filter((index) => index >= 0);
   return memberships.length > 0 ? { position: Math.max(...memberships) } : null;
 });
@@ -381,10 +387,7 @@ test('concurrent creates cannot exceed the cap', async () => {
   for (let index = 0; index < 49; index++) seedInvite(server.id, `cap-race-${index}`, null, server.ownerId);
   const app = createApp(server.ownerId);
 
-  const [first, second] = await Promise.all([
-    post(app, `/servers/${server.id}/invites`, { channelId: firstChannel.id }),
-    post(app, `/servers/${server.id}/invites`, { channelId: secondChannel.id }),
-  ]);
+  const [first, second] = await Promise.all([post(app, `/servers/${server.id}/invites`, { channelId: firstChannel.id }), post(app, `/servers/${server.id}/invites`, { channelId: secondChannel.id })]);
 
   expect([first.status, second.status].sort()).toEqual([201, 409]);
   expect(invites).toHaveLength(50);

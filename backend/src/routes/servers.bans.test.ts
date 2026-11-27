@@ -35,6 +35,7 @@ const toServer = (server: ServerRow) => ({
   createdAt: server.createdAt,
   channels: [],
   categories: [],
+  roles: [{ id: `role-${server.id}`, name: '@everyone', color: null, permissions: 0, position: 0, isDefault: true }],
 });
 
 const userOf = (id: string) => users.find((user) => user.id === id) ?? { id, username: id, displayName: null };
@@ -49,6 +50,7 @@ const findFirst = mock(async ({ where }: { where: DetailWhere | ManageWhere }) =
     members: server.members.map((userId) => ({
       joinedAt: server.createdAt,
       user: userOf(userId),
+      roles: [],
     })),
   };
 });
@@ -142,16 +144,25 @@ const findMembers = mock(async ({ where }: { where: { serverId?: string; userId?
   if (where.userId !== undefined) {
     return servers
       .filter((server) => server.members.includes(where.userId!) && !bans.some((ban) => ban.serverId === server.id && ban.userId === where.userId))
-      .map((server, position) => ({ server: toServer(server), position }));
+      .map((server, position) => ({ server: toServer(server), roles: [], position }));
   }
 
   const server = servers.find((entry) => entry.id === where.serverId);
   return (server?.members ?? []).map((userId) => ({ userId }));
 });
 
-const findFirstMember = mock(async ({ where }: { where: { userId: string } }) => {
-  const positions = servers.map((server, index) => (server.members.includes(where.userId) ? index : -1)).filter((index) => index >= 0);
-  return positions.length > 0 ? { position: Math.max(...positions) } : null;
+const findFirstMember = mock(async ({ where }: { where: { serverId?: string; userId: string } }) => {
+  if (where.serverId === undefined) {
+    const positions = servers.map((server, index) => (server.members.includes(where.userId) ? index : -1)).filter((index) => index >= 0);
+    return positions.length > 0 ? { position: Math.max(...positions) } : null;
+  }
+
+  if (bans.some((ban) => ban.serverId === where.serverId && ban.userId === where.userId)) return null;
+
+  const server = servers.find((entry) => entry.id === where.serverId);
+  if (!server || !server.members.includes(where.userId)) return null;
+
+  return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
 });
 
 const createMember = mock(async ({ data }: { data: { id: string; serverId: string; userId: string; position?: number } }) => {
@@ -334,6 +345,17 @@ test('hides the server from a banned member with a stale membership row', async 
   const detail = await get(app, `/${serverId}`);
   expect(detail.status).toBe(404);
   expect(findFirst.mock.calls[0]?.[0].where).toEqual({ id: serverId, members: { some: { userId: 'banned-hidden' } }, bans: { none: { userId: 'banned-hidden' } } });
+});
+
+test('rejects an invite from a banned member with a stale membership row', async () => {
+  const { serverId } = seedServer('invite-banned');
+  servers[0]!.members.push('banned-invite');
+  seedBan(serverId, 'banned-invite', 'owner-invite-banned', null);
+
+  const response = await post(createApp('banned-invite'), `/${serverId}/invites`, {});
+
+  expect(response.status).toBe(404);
+  expect(invites.some((invite) => invite.createdById === 'banned-invite')).toBe(false);
 });
 
 test('still lists the server for a member without a ban', async () => {

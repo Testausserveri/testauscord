@@ -60,10 +60,18 @@ const deleteIcons = mock(async ({ where }: { where: { serverId: string } }) => {
 
 const findMembers = mock(async ({ where }: { where: { serverId: string } }) => servers.find((entry) => entry.id === where.serverId)?.members ?? []);
 
+const findAccess = mock(async ({ where }: { where: { serverId: string; userId: string } }) => {
+  const server = servers.find((entry) => entry.id === where.serverId);
+  if (!server || !server.members.some((member) => member.userId === where.userId)) return null;
+  if (server.bans.some((ban) => ban.userId === where.userId)) return null;
+
+  return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
+});
+
 const prismaMock = {
   server: { findFirst, update: updateServer },
   serverIcon: { upsert: upsertIcon, deleteMany: deleteIcons },
-  serverMember: { findMany: findMembers },
+  serverMember: { findMany: findMembers, findFirst: findAccess },
 };
 
 mock.module('../db', () => ({

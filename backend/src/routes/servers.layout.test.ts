@@ -42,6 +42,13 @@ const findMembers = mock(async ({ where }: { where: { serverId: string } }) => {
   return (servers.find((entry) => entry.id === where.serverId)?.members ?? []).map((userId) => ({ userId }));
 });
 
+const findAccess = mock(async ({ where }: { where: { serverId: string; userId: string } }) => {
+  const server = servers.find((entry) => entry.id === where.serverId);
+  if (!server || !server.members.includes(where.userId)) return null;
+
+  return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
+});
+
 const updateCategory = mock(async ({ where, data }: { where: { id: string }; data: { position: number } }) => {
   await Promise.resolve();
   const row = categories.find((entry) => entry.id === where.id);
@@ -80,7 +87,7 @@ mock.module('../db', () => ({
     server: { findFirst: findServer },
     channelCategory: { findMany: findCategories, update: updateCategory },
     channel: { findMany: findChannels, update: updateChannel },
-    serverMember: { findMany: findMembers },
+    serverMember: { findMany: findMembers, findFirst: findAccess },
     $transaction: transaction,
   },
 }));

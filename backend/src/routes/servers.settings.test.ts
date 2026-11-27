@@ -32,10 +32,17 @@ const update = mock(async ({ where, data }: { where: { id: string }; data: { nam
 
 const findMany = mock(async ({ where }: { where: { serverId: string } }) => servers.find((entry) => entry.id === where.serverId)?.members ?? []);
 
+const findAccess = mock(async ({ where }: { where: { serverId: string; userId: string } }) => {
+  const server = servers.find((entry) => entry.id === where.serverId);
+  if (!server || !server.members.some((member) => member.userId === where.userId)) return null;
+
+  return { server: { ownerId: server.ownerId, roles: [] }, roles: [] };
+});
+
 mock.module('../db', () => ({
   prisma: {
     server: { findFirst, update },
-    serverMember: { findMany },
+    serverMember: { findMany, findFirst: findAccess },
   },
 }));
 
