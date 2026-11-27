@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { MyAccountTab } from '@/components/settings/MyAccountTab';
+import { PrivacyTab } from '@/components/settings/PrivacyTab';
 import { ProfileTab } from '@/components/settings/ProfileTab';
 import { SessionsTab } from '@/components/settings/SessionsTab';
 
-const TABS = ['account', 'profile', 'sessions', 'appearance'] as const;
+const TABS = ['account', 'profile', 'privacy', 'sessions', 'appearance'] as const;
 type SettingsTab = (typeof TABS)[number];
 
 const isSettingsTab = (value: string | null): value is SettingsTab => value !== null && TABS.includes(value as SettingsTab);
@@ -57,6 +58,9 @@ function SettingsContent() {
           <TabsTrigger value="profile" className="h-9 flex-1 justify-start md:flex-none">
             Profile
           </TabsTrigger>
+          <TabsTrigger value="privacy" className="h-9 flex-1 justify-start md:flex-none">
+            Privacy &amp; Safety
+          </TabsTrigger>
           <TabsTrigger value="sessions" className="h-9 flex-1 justify-start md:flex-none">
             Sessions
           </TabsTrigger>
@@ -72,6 +76,10 @@ function SettingsContent() {
 
           <TabsContent value="profile" className="min-w-0 flex-1">
             <ProfileTab />
+          </TabsContent>
+
+          <TabsContent value="privacy" className="min-w-0 flex-1">
+            <PrivacyTab />
           </TabsContent>
 
           <TabsContent value="sessions" className="min-w-0 flex-1">

@@ -44,7 +44,8 @@ export function ProfilePopover({ target, onClose, onEditProfile }: Props) {
     queryKey: ['profile', userId],
     queryFn: () => getUserProfile(userId!),
     enabled: open,
-    staleTime: 1000 * 20,
+    // canDm depends on the target's privacy setting, so recheck it on every open
+    staleTime: 0,
     retry: false,
   });
 
