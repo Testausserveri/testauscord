@@ -1,6 +1,7 @@
 import { eventBus, type DomainEvent } from './bus';
 import { publishToChannel, publishToUser } from './connections';
 import {
+  dmCreateFrame,
   friendRequestCreateFrame,
   friendRequestRemoveFrame,
   messageCreateFrame,
@@ -38,6 +39,10 @@ const dispatch = (event: DomainEvent): void => {
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   } else if (event.type === 'FRIEND_REQUEST_REMOVE') {
     const payload = JSON.stringify(friendRequestRemoveFrame(event.requestId, event.reason));
+
+    for (const userId of event.recipientIds) publishToUser(userId, payload);
+  } else if (event.type === 'DM_CREATE') {
+    const payload = JSON.stringify(dmCreateFrame(event.channelId));
 
     for (const userId of event.recipientIds) publishToUser(userId, payload);
   }

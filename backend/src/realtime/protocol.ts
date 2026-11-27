@@ -111,6 +111,7 @@ export type ServerFrame =
   | { type: 'USER_UPDATED'; data: { user: UserRef } }
   | { type: 'FRIEND_REQUEST_CREATE'; data: { request: FriendRequestDTO } }
   | { type: 'FRIEND_REQUEST_REMOVE'; data: { requestId: string; reason: FriendRequestRemoveReason } }
+  | { type: 'DM_CREATE'; data: { channelId: string } }
   | { type: 'SESSION_REVOKED' }
   | { type: 'ERROR'; nonce?: string; data: { code: ErrorCode; message: string } };
 
@@ -159,6 +160,11 @@ export const friendRequestCreateFrame = (request: FriendRequestDTO): ServerFrame
 export const friendRequestRemoveFrame = (requestId: string, reason: FriendRequestRemoveReason): ServerFrame => ({
   type: 'FRIEND_REQUEST_REMOVE',
   data: { requestId, reason },
+});
+
+export const dmCreateFrame = (channelId: string): ServerFrame => ({
+  type: 'DM_CREATE',
+  data: { channelId },
 });
 
 export const sessionRevokedFrame = (): ServerFrame => ({ type: 'SESSION_REVOKED' });

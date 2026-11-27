@@ -40,6 +40,7 @@ export function FriendEvents() {
 
           if (data.reason === 'accepted') {
             void queryClient.invalidateQueries({ queryKey: ['friends'] });
+            void queryClient.invalidateQueries({ queryKey: ['dms'] });
             if (wasSent) toast.success('Friend request accepted');
           }
         }

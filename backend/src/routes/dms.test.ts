@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
+import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
 type UserRow = {
@@ -23,6 +24,8 @@ let channels: ChannelRow[] = [];
 let members: MemberRow[] = [];
 let failNextCreate = false;
 let beforeCreate: (() => void) | null = null;
+let events: DomainEvent[] = [];
+let stopEvents: (() => void) | null = null;
 
 const dmKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
@@ -137,6 +140,13 @@ beforeEach(() => {
   members = [];
   failNextCreate = false;
   beforeCreate = null;
+  events = [];
+  stopEvents = eventBus.subscribe((event) => events.push(event));
+});
+
+afterEach(() => {
+  stopEvents?.();
+  stopEvents = null;
 });
 
 afterAll(() => mock.restore());
@@ -171,12 +181,14 @@ test('creates a DM between friends and returns the existing channel', async () =
   expect(channels).toHaveLength(1);
   expect(channels[0]!.dmKey).toBe(dmKey(alice.id, bob.id));
   expect(members.map((entry) => entry.userId).sort()).toEqual([alice.id, bob.id].sort());
+  expect(events).toEqual([{ type: 'DM_CREATE', channelId, recipientIds: [alice.id, bob.id] }]);
 
   const second = await post(app, { userId: bob.id });
 
   expect(second.status).toBe(200);
   expect(((await second.json()) as { channelId: string }).channelId).toBe(channelId);
   expect(channels).toHaveLength(1);
+  expect(events).toHaveLength(1);
 });
 
 test('allows shared-server members and blocks them when privacy is off', async () => {
@@ -187,6 +199,7 @@ test('allows shared-server members and blocks them when privacy is off', async (
 
   channels = [];
   members = [];
+  events = [];
   users.find((entry) => entry.id === bob.id)!.allowDmsFromServerMembers = false;
 
   const blocked = await post(createApp(alice), { userId: bob.id });
@@ -194,6 +207,7 @@ test('allows shared-server members and blocks them when privacy is off', async (
   expect(blocked.status).toBe(403);
   expect(await blocked.text()).toBe('You cannot message this user');
   expect(channels).toEqual([]);
+  expect(events).toEqual([]);
 });
 
 test('blocks users with no shared server and banned shared servers', async () => {

@@ -3,6 +3,7 @@ import type { Variables } from '../types/types';
 import { ChannelType } from '../generated/prisma/client';
 import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
+import { eventBus } from '../realtime/bus';
 import { canStartDm, directChannelKey } from '../services/directMessages';
 import { createRateLimiter } from '../utils/rateLimit';
 import { generateId } from '../utils/utils';
@@ -82,6 +83,8 @@ app.post('/', async (c) => {
 
       return created;
     });
+
+    eventBus.publish({ type: 'DM_CREATE', channelId: channel.id, recipientIds: [viewerId, targetId] });
 
     return c.json({ channelId: channel.id }, 201);
   } catch (error) {

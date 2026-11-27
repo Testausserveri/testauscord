@@ -12,6 +12,7 @@ import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { ServerMembershipEvents } from '@/components/ServerMembershipEvents';
 import { UserEvents } from '@/components/UserEvents';
 import { FriendEvents } from '@/components/FriendEvents';
+import { DmEvents } from '@/components/DmEvents';
 import { ProfilePopoverProvider } from '@/components/ProfilePopoverProvider';
 import { getServerRoute } from '@/lib/serverRoutes';
 
@@ -26,6 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <ServerMembershipEvents />
         <UserEvents />
         <FriendEvents />
+        <DmEvents />
         <SidebarProvider>
           <div className="flex h-screen w-full">
             <ServerRail />

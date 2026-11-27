@@ -280,3 +280,35 @@ test('dispatches user updates to every recipient and nobody else', () => {
     for (const socket of sockets) removeConnection(socket);
   }
 });
+
+test('dispatches DM creates to both participants and nobody else', () => {
+  const sent: Record<string, string[]> = { 'user-a': [], 'user-b': [], 'user-out': [] };
+  const sockets: ServerWebSocket[] = [];
+
+  for (const userId of Object.keys(sent)) {
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send: (payload: string) => {
+        sent[userId]!.push(payload);
+        return payload.length;
+      },
+    } as unknown as ServerWebSocket;
+
+    addConnection(socket, userId, `session-${userId}`, Date.now() + 60_000);
+    sockets.push(socket);
+  }
+
+  const stop = startDispatcher();
+
+  try {
+    eventBus.publish({ type: 'DM_CREATE', channelId: 'channel-1', recipientIds: ['user-a', 'user-b'] });
+
+    const frame = JSON.stringify({ type: 'DM_CREATE', data: { channelId: 'channel-1' } });
+    expect(sent['user-a']).toEqual([frame]);
+    expect(sent['user-b']).toEqual([frame]);
+    expect(sent['user-out']).toEqual([]);
+  } finally {
+    stop();
+    for (const socket of sockets) removeConnection(socket);
+  }
+});

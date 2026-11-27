@@ -43,6 +43,11 @@ export type DomainEvent =
       requestId: string;
       reason: FriendRequestRemoveReason;
       recipientIds: string[];
+    }
+  | {
+      type: 'DM_CREATE';
+      channelId: string;
+      recipientIds: string[];
     };
 
 export type EventListener = (event: DomainEvent) => void;
