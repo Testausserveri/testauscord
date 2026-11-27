@@ -69,6 +69,7 @@ model Server {
   categories ChannelCategory[]
   invites ServerInvite[]
   bans ServerBan[]
+  roles Role[]
   icon ServerIcon?
 }
 
@@ -121,10 +122,41 @@ model ServerMember {
 
   server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles MemberRole[]
 
   @@unique([serverId, userId])
   @@index([userId])
   @@index([userId, position])
+}
+
+model Role {
+  id String @id
+  serverId String
+  name String
+  color Int?
+  permissions Int @default(0)
+  position Int @default(0)
+  isDefault Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  members MemberRole[]
+
+  @@unique([serverId, name])
+  @@unique([serverId, position])
+  @@index([serverId])
+}
+
+model MemberRole {
+  id String @id
+  roleId String
+  serverMemberId String
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  serverMember ServerMember @relation(fields: [serverMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, serverMemberId])
+  @@index([serverMemberId])
 }
 
 model ServerBan {
