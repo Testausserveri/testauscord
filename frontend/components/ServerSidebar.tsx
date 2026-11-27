@@ -17,6 +17,7 @@ import { apiErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
 import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel, ServerDetail, ServerLayoutGroup } from '@/types/types';
 import { getServerRoute } from '@/lib/serverRoutes';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { groupServer, moveCategory, moveChannel, toLayoutPayload } from '@/lib/serverLayout';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,8 @@ function SortableChannel({
   channel,
   serverId,
   isActive,
-  isOwner,
+  canManageChannels,
+  canManageInvites,
   onInvite,
   onViewInvites,
   onRename,
@@ -105,7 +107,8 @@ function SortableChannel({
   channel: ServerChannel;
   serverId: string;
   isActive: boolean;
-  isOwner: boolean;
+  canManageChannels: boolean;
+  canManageInvites: boolean;
   onInvite: () => void;
   onViewInvites: () => void;
   onRename: () => void;
@@ -117,7 +120,7 @@ function SortableChannel({
       <ContextMenu>
         <ContextMenuTrigger asChild onContextMenu={(event) => event.stopPropagation()}>
           <SidebarMenuButton asChild isActive={isActive}>
-            <Link {...(isOwner ? listeners : {})} href={`/channels/${serverId}/${channel.id}`} draggable={false} className="py-4">
+            <Link {...(canManageChannels ? listeners : {})} href={`/channels/${serverId}/${channel.id}`} draggable={false} className="py-4">
               <Hash className="h-5! w-5!" />
               <span>{channel.name}</span>
             </Link>
@@ -128,18 +131,18 @@ function SortableChannel({
             <UserPlus />
             Invite to channel
           </ContextMenuItem>
-          {isOwner && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={onViewInvites}>
-                <Ticket />
-                View invites
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={onRename}>
-                <Pencil />
-                Rename
-              </ContextMenuItem>
-            </>
+          {(canManageInvites || canManageChannels) && <ContextMenuSeparator />}
+          {canManageInvites && (
+            <ContextMenuItem onSelect={onViewInvites}>
+              <Ticket />
+              View invites
+            </ContextMenuItem>
+          )}
+          {canManageChannels && (
+            <ContextMenuItem onSelect={onRename}>
+              <Pencil />
+              Rename
+            </ContextMenuItem>
           )}
         </ContextMenuContent>
       </ContextMenu>
@@ -153,7 +156,7 @@ function SortableChannel({
 function SortableCategory({
   category,
   isCollapsed,
-  isOwner,
+  canManageChannels,
   onToggle,
   onRename,
   onCreateChannel,
@@ -162,7 +165,7 @@ function SortableCategory({
 }: {
   category: ServerCategory;
   isCollapsed: boolean;
-  isOwner: boolean;
+  canManageChannels: boolean;
   onToggle: () => void;
   onRename: () => void;
   onCreateChannel: () => void;
@@ -174,15 +177,15 @@ function SortableCategory({
   return (
     <SidebarGroup ref={setNodeRef} style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition }} className={cn(isDragging && 'opacity-0')}>
       <ContextMenu>
-        <ContextMenuTrigger asChild disabled={!isOwner} onContextMenu={(event) => event.stopPropagation()}>
+        <ContextMenuTrigger asChild disabled={!canManageChannels} onContextMenu={(event) => event.stopPropagation()}>
           <SidebarGroupLabel className="pr-8">
-            <button type="button" {...(isOwner ? listeners : {})} aria-expanded={!isCollapsed} onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1 self-stretch">
+            <button type="button" {...(canManageChannels ? listeners : {})} aria-expanded={!isCollapsed} onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1 self-stretch">
               <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', isCollapsed && '-rotate-90')} />
               <span className="truncate">{category.name}</span>
             </button>
           </SidebarGroupLabel>
         </ContextMenuTrigger>
-        {isOwner && (
+        {canManageChannels && (
           <ContextMenuContent className="w-56">
             <ContextMenuItem onSelect={onRename}>
               <Pencil />
@@ -200,7 +203,7 @@ function SortableCategory({
           </ContextMenuContent>
         )}
       </ContextMenu>
-      {isOwner && (
+      {canManageChannels && (
         <SidebarGroupAction type="button" title={`Create channel in ${category.name}`} aria-label={`Create channel in ${category.name}`} onClick={onCreateChannel}>
           <Plus />
         </SidebarGroupAction>
@@ -253,6 +256,9 @@ export function ServerSidebar() {
   const server = data?.find((item) => item.id === route?.serverId);
   const serverId = server?.id;
   const isOwner = Boolean(server && user && server.ownerId === user.id);
+  const canManageChannels = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_CHANNELS));
+  const canManageInvites = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_INVITES));
+  const canBanMembers = Boolean(server && hasPermission(server, PERMISSIONS.BAN_MEMBERS));
   const layout = server ? groupServer(server) : null;
   const categories = layout?.categories ?? [];
   const channelsById = new Map(server?.channels.map((channel) => [channel.id, channel]) ?? []);
@@ -477,28 +483,28 @@ export function ServerSidebar() {
               <UserPlus />
               Invite people
             </DropdownMenuItem>
-            {isOwner && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setInviteChannel(null);
-                    setAction('invites');
-                  }}
-                >
-                  <Ticket />
-                  Active invites
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setAction('bans')}>
-                  <Ban />
-                  Banned users
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setAction('settings')}>
-                  <Settings />
-                  Server settings
-                </DropdownMenuItem>
-              </>
+            <DropdownMenuSeparator />
+            {canManageInvites && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  setInviteChannel(null);
+                  setAction('invites');
+                }}
+              >
+                <Ticket />
+                Active invites
+              </DropdownMenuItem>
             )}
+            {canBanMembers && (
+              <DropdownMenuItem onSelect={() => setAction('bans')}>
+                <Ban />
+                Banned users
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => setAction('settings')}>
+              <Settings />
+              Server settings
+            </DropdownMenuItem>
             {user && !isOwner && (
               <>
                 <DropdownMenuSeparator />
@@ -513,7 +519,7 @@ export function ServerSidebar() {
       </SidebarHeader>
 
       <ContextMenu>
-        <ContextMenuTrigger asChild disabled={!isOwner}>
+        <ContextMenuTrigger asChild disabled={!canManageChannels}>
           <SidebarContent
             onPointerDownCapture={() => {
               suppressClickRef.current = false;
@@ -552,7 +558,8 @@ export function ServerSidebar() {
                                   channel={channel}
                                   serverId={server.id}
                                   isActive={route?.channelId === channel.id}
-                                  isOwner={isOwner}
+                                  canManageChannels={canManageChannels}
+                                  canManageInvites={canManageInvites}
                                   onInvite={() => openChannelInvite(channel)}
                                   onViewInvites={() => openChannelInvites(channel)}
                                   onRename={() => openChannelRename(channel)}
@@ -574,7 +581,7 @@ export function ServerSidebar() {
                         <SortableCategory
                           category={category}
                           isCollapsed={isCollapsed}
-                          isOwner={isOwner}
+                          canManageChannels={canManageChannels}
                           onToggle={() => toggleCategory(category.id)}
                           onRename={() => openCategoryDialog({ mode: 'rename', category })}
                           onCreateChannel={() => setChannelTarget({ categoryId: category.id })}
@@ -593,7 +600,8 @@ export function ServerSidebar() {
                                         channel={channel}
                                         serverId={server.id}
                                         isActive={route?.channelId === channel.id}
-                                        isOwner={isOwner}
+                                        canManageChannels={canManageChannels}
+                                        canManageInvites={canManageInvites}
                                         onInvite={() => openChannelInvite(channel)}
                                         onViewInvites={() => openChannelInvites(channel)}
                                         onRename={() => openChannelRename(channel)}
@@ -630,7 +638,7 @@ export function ServerSidebar() {
             )}
           </SidebarContent>
         </ContextMenuTrigger>
-        {isOwner && (
+        {canManageChannels && (
           <ContextMenuContent className="w-56">
             <ContextMenuItem onSelect={() => setChannelTarget({ categoryId: null })}>
               <Plus />

@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { banMember, createInvite, getInvites, getServer, getUser, leaveServer, removeMember, revokeInvite } from '@/api/api';
+import { banMember, createInvite, getInvites, getServer, leaveServer, removeMember, revokeInvite } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
-import { CurrentUser, Server, ServerAction, ServerDetail, ServerInvite, UserRef } from '@/types/types';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { Server, ServerAction, ServerDetail, ServerInvite, UserRef } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -36,12 +37,6 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
   const inviteChannelId = inviteChannel?.id ?? null;
   const inviteCode = invite && invite.channelId === inviteChannelId ? invite.code : null;
 
-  const { data: currentUser } = useQuery<CurrentUser>({
-    queryKey: ['user'],
-    queryFn: getUser,
-    staleTime: Infinity,
-  });
-
   const { data: detail, isPending: detailPending } = useQuery<ServerDetail>({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId!),
@@ -49,12 +44,14 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
     staleTime: 1000 * 20,
   });
 
-  const isOwner = Boolean(server && currentUser && server.ownerId === currentUser.id);
+  const canManageInvites = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_INVITES));
+  const canKick = Boolean(server && hasPermission(server, PERMISSIONS.KICK_MEMBERS));
+  const canBan = Boolean(server && hasPermission(server, PERMISSIONS.BAN_MEMBERS));
 
   const { data: invites, isPending: invitesPending } = useQuery<ServerInvite[]>({
     queryKey: ['server-invites', serverId],
     queryFn: () => getInvites(serverId!),
-    enabled: action === 'invites' && Boolean(serverId) && isOwner,
+    enabled: action === 'invites' && Boolean(serverId) && canManageInvites,
     staleTime: 1000 * 20,
   });
 
@@ -187,22 +184,34 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
             </Button>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {isOwner && (
-            <p className="text-xs text-muted-foreground">{inviteChannel ? 'Manage existing codes from the channel menu.' : 'Manage existing codes from Active invites.'}</p>
-          )}
+          {canManageInvites && <p className="text-xs text-muted-foreground">{inviteChannel ? 'Manage existing codes from the channel menu.' : 'Manage existing codes from Active invites.'}</p>}
         </DialogContent>
       </Dialog>
 
       <Dialog open={action === 'invites'} onOpenChange={(open) => !open && close()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{inviteChannel ? <>Invites for <b>#{inviteChannel.name}</b></> : 'Active invites'}</DialogTitle>
+            <DialogTitle>
+              {inviteChannel ? (
+                <>
+                  Invites for <b>#{inviteChannel.name}</b>
+                </>
+              ) : (
+                'Active invites'
+              )}
+            </DialogTitle>
             <DialogDescription>
-              {inviteChannel ? 'Codes that still grant access to this channel.' : <>Codes that still grant access to <b>{server?.name}</b>.</>}
+              {inviteChannel ? (
+                'Codes that still grant access to this channel.'
+              ) : (
+                <>
+                  Codes that still grant access to <b>{server?.name}</b>.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
-          {!isOwner ? (
-            <p className="text-sm text-muted-foreground">Only the server owner can manage invites.</p>
+          {!canManageInvites ? (
+            <p className="text-sm text-muted-foreground">You do not have permission to manage invites.</p>
           ) : invitesPending ? (
             <p className="text-sm text-muted-foreground">Loading invites...</p>
           ) : visibleInvites && visibleInvites.length > 0 ? (
@@ -234,7 +243,7 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
             <DialogTitle>
               Members of <b>{server?.name}</b>
             </DialogTitle>
-            <DialogDescription>{isOwner ? 'Kick removes access until a new invite. Ban blocks the user until you unban them.' : 'People with access to this server.'}</DialogDescription>
+            <DialogDescription>{canKick || canBan ? 'Kick removes access until a new invite. Ban blocks the user until you unban them.' : 'People with access to this server.'}</DialogDescription>
           </DialogHeader>
           {detailPending ? (
             <p className="text-sm text-muted-foreground">Loading members...</p>
@@ -248,14 +257,18 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
                   </button>
                   {member.id === server?.ownerId ? (
                     <span className="text-xs text-muted-foreground">Owner</span>
-                  ) : isOwner ? (
+                  ) : canKick || canBan ? (
                     <div className="flex shrink-0 gap-1">
-                      <Button type="button" variant="secondary" size="sm" onClick={() => openModeration('kick', member)} disabled={busy}>
-                        Kick
-                      </Button>
-                      <Button type="button" variant="destructive" size="sm" onClick={() => openModeration('ban', member)} disabled={busy}>
-                        Ban
-                      </Button>
+                      {canKick && (
+                        <Button type="button" variant="secondary" size="sm" onClick={() => openModeration('kick', member)} disabled={busy}>
+                          Kick
+                        </Button>
+                      )}
+                      {canBan && (
+                        <Button type="button" variant="destructive" size="sm" onClick={() => openModeration('ban', member)} disabled={busy}>
+                          Ban
+                        </Button>
+                      )}
                     </div>
                   ) : null}
                 </div>

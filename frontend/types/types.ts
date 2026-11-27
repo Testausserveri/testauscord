@@ -94,6 +94,8 @@ export type Server = {
   iconVersion: number | null;
   channels: ServerChannel[];
   categories: ServerCategory[];
+  myPermissions: number;
+  myHighestRolePosition: number;
 };
 
 export type ServerPatch = {

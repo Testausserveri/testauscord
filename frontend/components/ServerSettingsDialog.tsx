@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { updateServer } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { encodeImage, type ImageUpload } from '@/lib/imageUpload';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import type { Server, ServerDetail, ServerPatch } from '@/types/types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -39,6 +40,7 @@ export function ServerSettingsDialog({ server, onClose }: Props) {
 
   const trimmed = name.trim();
   const hasIcon = icon !== null || (!iconRemoved && server?.iconVersion != null);
+  const canManage = Boolean(server && hasPermission(server, PERMISSIONS.MANAGE_SERVER));
 
   const patch: ServerPatch = {};
   if (trimmed !== server?.name) patch.name = trimmed;
@@ -117,7 +119,7 @@ export function ServerSettingsDialog({ server, onClose }: Props) {
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Server settings</DialogTitle>
-            <DialogDescription>Only the server owner can change these settings.</DialogDescription>
+            <DialogDescription>{canManage ? 'Rename the server or change its icon.' : 'Only members with Manage Server can change these settings.'}</DialogDescription>
           </DialogHeader>
 
           {previewServer && (
@@ -129,11 +131,11 @@ export function ServerSettingsDialog({ server, onClose }: Props) {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {hasIcon && (
-                  <Button type="button" variant="ghost" size="sm" onClick={handleIconRemove} disabled={busy || processing}>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleIconRemove} disabled={!canManage || busy || processing}>
                     Remove
                   </Button>
                 )}
-                <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={busy || processing}>
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={!canManage || busy || processing}>
                   {processing ? 'Processing...' : hasIcon ? 'Change' : 'Upload'}
                 </Button>
                 <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={handleIconChange} />
@@ -146,7 +148,7 @@ export function ServerSettingsDialog({ server, onClose }: Props) {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="server-settings-name">Server name</Label>
-            <Input id="server-settings-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} disabled={busy} />
+            <Input id="server-settings-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} disabled={!canManage || busy} />
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -154,7 +156,7 @@ export function ServerSettingsDialog({ server, onClose }: Props) {
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!trimmed || !changed || busy || processing}>
+            <Button type="submit" disabled={!canManage || !trimmed || !changed || busy || processing}>
               Save
             </Button>
           </DialogFooter>

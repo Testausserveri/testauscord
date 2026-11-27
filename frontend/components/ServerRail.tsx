@@ -15,6 +15,7 @@ import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
 import { firstChannel, getServerRoute } from '@/lib/serverRoutes';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
 import { logoutToLogin } from '@/lib/logout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
@@ -31,6 +32,8 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
   const channel = firstChannel(server);
   const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
+  const canManageInvites = hasPermission(server, PERMISSIONS.MANAGE_INVITES);
+  const canBanMembers = hasPermission(server, PERMISSIONS.BAN_MEMBERS);
 
   return (
     <div
@@ -59,23 +62,23 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
             <UserPlus />
             Invite people
           </ContextMenuItem>
-          {user?.id === server.ownerId && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => onAction('invites')}>
-                <Ticket />
-                Active invites
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => onAction('bans')}>
-                <Ban />
-                Banned users
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => onAction('settings')}>
-                <Settings />
-                Server settings
-              </ContextMenuItem>
-            </>
+          <ContextMenuSeparator />
+          {canManageInvites && (
+            <ContextMenuItem onSelect={() => onAction('invites')}>
+              <Ticket />
+              Active invites
+            </ContextMenuItem>
           )}
+          {canBanMembers && (
+            <ContextMenuItem onSelect={() => onAction('bans')}>
+              <Ban />
+              Banned users
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onSelect={() => onAction('settings')}>
+            <Settings />
+            Server settings
+          </ContextMenuItem>
           {user && user.id !== server.ownerId && (
             <>
               <ContextMenuSeparator />
