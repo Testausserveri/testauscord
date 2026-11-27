@@ -119,12 +119,14 @@ export type RolePatch = {
   permissions?: number;
 };
 
+export type ServerMember = UserRef & {
+  joinedAt: string;
+  roleIds: string[];
+};
+
 export type ServerDetail = Server & {
   roles: ServerRole[];
-  members: (UserRef & {
-    joinedAt: string;
-    roleIds: string[];
-  })[];
+  members: ServerMember[];
 };
 
 export type ServerLayoutGroup = {

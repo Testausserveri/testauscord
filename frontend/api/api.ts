@@ -212,6 +212,10 @@ export const reorderRoles = async (serverId: string, roleIds: string[]): Promise
   return await axios.put(`${API_URL}/servers/${serverId}/roles/order`, { roleIds }, { withCredentials: true }).then((res) => res.data);
 };
 
+export const updateMemberRoles = async (serverId: string, userId: string, roleIds: string[]) => {
+  await axios.put(`${API_URL}/servers/${serverId}/members/${userId}/roles`, { roleIds }, { withCredentials: true });
+};
+
 export const createInvite = async (serverId: string, channelId?: string): Promise<{ code: string }> => {
   return await axios.post(`${API_URL}/servers/${serverId}/invites`, channelId ? { channelId } : {}, { withCredentials: true }).then((res) => res.data);
 };

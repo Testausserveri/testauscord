@@ -13,10 +13,11 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OverviewTab } from '@/components/server-settings/OverviewTab';
 import { RolesTab } from '@/components/server-settings/RolesTab';
+import { MembersTab } from '@/components/server-settings/MembersTab';
 import { InvitesTab } from '@/components/server-settings/InvitesTab';
 
-const TABS: ServerSettingsTab[] = ['overview', 'roles', 'invites'];
-const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles', invites: 'Invites' };
+const TABS: ServerSettingsTab[] = ['overview', 'roles', 'members', 'invites'];
+const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles', members: 'Members', invites: 'Invites' };
 
 const isServerSettingsTab = (value: string | null): value is ServerSettingsTab => value !== null && TABS.includes(value as ServerSettingsTab);
 
@@ -44,11 +45,12 @@ function ServerSettingsContent() {
   const server = servers?.find((entry) => entry.id === serverId);
   const availableTabs = server ? serverSettingsTabs(server) : [];
   const activeTab = availableTabs.includes(tab) ? tab : availableTabs[0];
+  const needsDetail = activeTab === 'roles' || activeTab === 'members';
 
   const { data: detail, isPending: detailPending } = useQuery<ServerDetail>({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId),
-    enabled: activeTab === 'roles' && Boolean(server),
+    enabled: needsDetail && Boolean(server),
     staleTime: 1000 * 20,
   });
 
@@ -107,6 +109,15 @@ function ServerSettingsContent() {
                 <RolesTab server={server} roles={detail.roles} />
               ) : (
                 <p className="text-sm text-muted-foreground">Roles unavailable.</p>
+              )}
+            </TabsContent>
+            <TabsContent value="members" className="min-w-0 flex-1">
+              {detailPending ? (
+                <p className="text-sm text-muted-foreground">Loading members...</p>
+              ) : detail ? (
+                <MembersTab server={server} detail={detail} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Members unavailable.</p>
               )}
             </TabsContent>
             <TabsContent value="invites" className="min-w-0 flex-1">

@@ -17,6 +17,9 @@ const server = (permissions: number): Server => ({
 
 test('tabs follow permissions', () => {
   expect(serverSettingsTabs(server(0))).toEqual([]);
+  expect(serverSettingsTabs(server(PERMISSIONS.VIEW_MEMBERS))).toEqual(['members']);
+  expect(serverSettingsTabs(server(PERMISSIONS.KICK_MEMBERS))).toEqual(['members']);
+  expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_ROLES))).toEqual(['roles', 'members']);
   expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_INVITES))).toEqual(['invites']);
-  expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_SERVER | PERMISSIONS.MANAGE_ROLES | PERMISSIONS.MANAGE_INVITES))).toEqual(['overview', 'roles', 'invites']);
+  expect(serverSettingsTabs(server(PERMISSIONS.MANAGE_SERVER | PERMISSIONS.MANAGE_ROLES | PERMISSIONS.VIEW_MEMBERS | PERMISSIONS.MANAGE_INVITES))).toEqual(['overview', 'roles', 'members', 'invites']);
 });

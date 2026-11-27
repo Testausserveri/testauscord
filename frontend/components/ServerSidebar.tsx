@@ -10,7 +10,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, ChevronDown, FolderPlus, Hash, LogOut, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
+import { Ban, ChevronDown, FolderPlus, Hash, LogOut, Pencil, Plus, Settings, Ticket, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { createCategory, createChannel, deleteCategory, getServers, getUser, renameChannel, updateCategory, updateServerLayout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
@@ -470,10 +470,6 @@ export function ServerSidebar() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem disabled={!server} onSelect={() => setAction('members')}>
-              <Users />
-              Members
-            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!server}
               onSelect={() => {

@@ -86,8 +86,8 @@ test('non-member or banned member gets null', async () => {
 test('rejects unknown permission bits', () => {
   expect(hasUnknownPermissionBits(0)).toBe(false);
   expect(hasUnknownPermissionBits(ALL_PERMISSIONS)).toBe(false);
-  expect(hasUnknownPermissionBits(1 << 7)).toBe(true);
-  expect(hasUnknownPermissionBits(ALL_PERMISSIONS | (1 << 7))).toBe(true);
+  expect(hasUnknownPermissionBits(1 << 8)).toBe(true);
+  expect(hasUnknownPermissionBits(ALL_PERMISSIONS | (1 << 8))).toBe(true);
 });
 
 test('hasPermission checks a single bit', () => {

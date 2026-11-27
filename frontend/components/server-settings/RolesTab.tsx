@@ -32,6 +32,7 @@ const PERMISSION_GROUPS = [
   {
     label: 'Membership',
     items: [
+      { bit: PERMISSIONS.VIEW_MEMBERS, label: 'View members' },
       { bit: PERMISSIONS.KICK_MEMBERS, label: 'Kick members' },
       { bit: PERMISSIONS.BAN_MEMBERS, label: 'Ban members' },
     ],

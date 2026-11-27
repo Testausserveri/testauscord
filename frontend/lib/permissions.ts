@@ -6,6 +6,7 @@ export const PERMISSIONS = {
   BAN_MEMBERS: 1 << 4,
   MANAGE_INVITES: 1 << 5,
   VIEW_AUDIT_LOG: 1 << 6,
+  VIEW_MEMBERS: 1 << 7,
 } as const;
 
 export const hasPermission = (server: { myPermissions: number }, bit: number) => (server.myPermissions & bit) === bit;

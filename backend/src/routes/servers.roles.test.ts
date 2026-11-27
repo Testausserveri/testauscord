@@ -310,7 +310,7 @@ test('rejects invalid colors, names and unknown permission bits', async () => {
 
   expect((await post(app, `/${serverId}/roles`, { name: 'A', color: 0x1000000 })).status).toBe(400);
   expect((await post(app, `/${serverId}/roles`, { name: 'B', color: -1 })).status).toBe(400);
-  expect((await post(app, `/${serverId}/roles`, { name: 'C', permissions: 1 << 7 })).status).toBe(400);
+  expect((await post(app, `/${serverId}/roles`, { name: 'C', permissions: 1 << 8 })).status).toBe(400);
   expect((await post(app, `/${serverId}/roles`, { name: 'bad\u0000name' })).status).toBe(400);
   expect((await post(app, `/${serverId}/roles`, { name: 'bad\u202ename' })).status).toBe(400);
 });

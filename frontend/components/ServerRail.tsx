@@ -9,7 +9,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, 
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, LogOut, MessageCircle, Plus, Settings, UserPlus, Users } from 'lucide-react';
+import { Ban, LogOut, MessageCircle, Plus, Settings, UserPlus } from 'lucide-react';
 import { createServer, getPendingRequests, getServers, getUser, joinServer, logout, reorderServers } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -54,10 +54,6 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
           </Link>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
-          <ContextMenuItem onSelect={() => onAction('members')}>
-            <Users />
-            Members
-          </ContextMenuItem>
           <ContextMenuItem onSelect={() => onAction('invite')}>
             <UserPlus />
             Invite people
