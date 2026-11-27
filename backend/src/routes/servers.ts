@@ -8,6 +8,7 @@ import { eventBus } from '../realtime/bus';
 import { unsubscribeUserFromChannel, closeUserConnectionsSilently } from '../realtime/connections';
 import { isServerOwner } from '../services/access';
 import { getBan } from '../services/moderation';
+import { getMemberAccess, hasUnknownPermissionBits, requirePermission, PERMISSIONS } from '../services/permissions';
 import { planCategoryDelete, planChannelAssign, planLayout, nextPosition, type ChannelPlacement } from '../services/serverLayout';
 import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
 import { nextServerPosition } from '../services/serverOrder';
@@ -29,15 +30,37 @@ const categoryMutationLimiter = createRateLimiter(30, 60 * 60_000);
 const serverLeaveLimiter = createRateLimiter(10, 60_000);
 const moderationLimiter = createRateLimiter(30, 60_000);
 const serverOrderLimiter = createRateLimiter(60, 60_000);
+const roleMutationLimiter = createRateLimiter(30, 60_000);
 
 const MAX_SERVER_MEMBERSHIPS = 200;
 const MAX_CHANNELS_PER_SERVER = 50;
 const MAX_CATEGORIES_PER_SERVER = 20;
 const MAX_INVITES_PER_SERVER = 50;
+const MAX_ROLES_PER_SERVER = 25;
+const MAX_ROLE_ASSIGNMENTS = MAX_ROLES_PER_SERVER - 1;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 
 const serverNameSchema = z.string().trim().min(1).max(100);
 const categoryNameSchema = z.string().trim().min(1).max(50);
+const roleNameSchema = z.string().trim().min(1).max(50);
+const roleColorSchema = z.number().int().min(0).max(0xffffff);
+const rolePermissionsSchema = z.number().int().min(0).max(2_147_483_647);
+const roleCreateSchema = z.object({
+  name: roleNameSchema,
+  color: roleColorSchema.nullable().optional(),
+  permissions: rolePermissionsSchema.optional(),
+});
+const rolePatchSchema = z
+  .object({
+    name: roleNameSchema.optional(),
+    color: roleColorSchema.nullable().optional(),
+    permissions: rolePermissionsSchema.optional(),
+  })
+  .refine((value) => value.name !== undefined || value.color !== undefined || value.permissions !== undefined);
+const roleIdsSchema = z
+  .array(z.string().min(1).max(64))
+  .max(MAX_ROLE_ASSIGNMENTS)
+  .refine((roleIds) => new Set(roleIds).size === roleIds.length);
 const channelNameSchema = z
   .string()
   .trim()
@@ -66,6 +89,7 @@ const serverPatchSchema = z
   .refine((value) => value.name !== undefined || value.icon !== undefined);
 
 const categorySelect = { id: true, name: true, position: true } as const;
+const roleSelect = { id: true, name: true, color: true, permissions: true, position: true, isDefault: true } as const;
 
 const findManageableServer = (serverId: string, userId: string) =>
   prisma.server.findFirst({
@@ -510,6 +534,391 @@ app.patch('/:id', async (c) => {
   });
 
   return c.json({ id: server.id, name: nextName, iconVersion: nextIconVersion }, 200);
+});
+
+app.post('/:id/roles', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, roleMutationLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = roleCreateSchema.safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid role', 400);
+  }
+
+  const serverId = c.req.param('id');
+  const { name, color, permissions = 0 } = result.data;
+
+  if (containsControlChars(name) || containsBidiControls(name) || hasUnknownPermissionBits(permissions)) {
+    return c.text('Invalid role', 400);
+  }
+
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_ROLES);
+  if (access instanceof Response) return access;
+
+  if (!access.isOwner && access.highestPosition === 0) {
+    return c.text('Forbidden', 403);
+  }
+
+  if (!access.isOwner && (permissions & ~access.permissions) !== 0) {
+    return c.text('Forbidden', 403);
+  }
+
+  if (name.toLowerCase() === '@everyone') {
+    return c.text('Role name already in use', 409);
+  }
+
+  const duplicate = await prisma.role.findFirst({
+    where: { serverId, name: { equals: name, mode: 'insensitive' } },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    return c.text('Role name already in use', 409);
+  }
+
+  try {
+    const outcome = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Server" WHERE id = ${serverId} FOR UPDATE`;
+
+      const existing = await tx.role.findMany({
+        where: { serverId },
+        select: { id: true, position: true },
+        orderBy: { position: 'desc' },
+      });
+
+      if (existing.length >= MAX_ROLES_PER_SERVER) {
+        return { error: 'limit' } as const;
+      }
+
+      let position: number;
+
+      if (access.isOwner) {
+        position = (existing[0]?.position ?? 0) + 1;
+      } else {
+        position = access.highestPosition;
+
+        for (const role of existing) {
+          if (role.position >= position) {
+            await tx.role.update({ where: { id: role.id }, data: { position: role.position + 1 } });
+          }
+        }
+      }
+
+      const role = await tx.role.create({
+        data: { id: generateId(), serverId, name, color: color ?? null, permissions, position },
+        select: roleSelect,
+      });
+
+      return { role } as const;
+    });
+
+    if ('error' in outcome) {
+      return c.text('Role limit reached', 409);
+    }
+
+    return c.json(outcome.role, 201);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Role name already in use', 409);
+    }
+    throw error;
+  }
+});
+
+app.patch('/:id/roles/:roleId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, roleMutationLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = rolePatchSchema.safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid role', 400);
+  }
+
+  const serverId = c.req.param('id');
+  const { name, color, permissions } = result.data;
+
+  if (name !== undefined && (containsControlChars(name) || containsBidiControls(name))) {
+    return c.text('Invalid role', 400);
+  }
+
+  if (permissions !== undefined && hasUnknownPermissionBits(permissions)) {
+    return c.text('Invalid role', 400);
+  }
+
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_ROLES);
+  if (access instanceof Response) return access;
+
+  const role = await prisma.role.findFirst({
+    where: { id: c.req.param('roleId'), serverId },
+    select: { id: true, name: true, position: true, isDefault: true },
+  });
+
+  if (!role) {
+    return c.text('Role not found', 404);
+  }
+
+  if (role.isDefault) {
+    if (!access.isOwner) {
+      return c.text('Only the server owner can edit the default role', 403);
+    }
+
+    if (name !== undefined && name !== role.name) {
+      return c.text('The default role cannot be renamed', 400);
+    }
+  } else if (!access.isOwner && role.position >= access.highestPosition) {
+    return c.text('Forbidden', 403);
+  }
+
+  if (permissions !== undefined && !access.isOwner && (permissions & ~access.permissions) !== 0) {
+    return c.text('Forbidden', 403);
+  }
+
+  if (name !== undefined && name !== role.name) {
+    if (name.toLowerCase() === '@everyone') {
+      return c.text('Role name already in use', 409);
+    }
+
+    const duplicate = await prisma.role.findFirst({
+      where: { serverId, id: { not: role.id }, name: { equals: name, mode: 'insensitive' } },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      return c.text('Role name already in use', 409);
+    }
+  }
+
+  try {
+    const updated = await prisma.role.update({
+      where: { id: role.id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(color !== undefined ? { color } : {}),
+        ...(permissions !== undefined ? { permissions } : {}),
+      },
+      select: roleSelect,
+    });
+
+    return c.json(updated, 200);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Role name already in use', 409);
+    }
+    throw error;
+  }
+});
+
+app.delete('/:id/roles/:roleId', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, roleMutationLimiter, userId);
+  if (limited) return limited;
+
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_ROLES);
+  if (access instanceof Response) return access;
+
+  const role = await prisma.role.findFirst({
+    where: { id: c.req.param('roleId'), serverId },
+    select: { id: true, position: true, isDefault: true },
+  });
+
+  if (!role) {
+    return c.text('Role not found', 404);
+  }
+
+  if (role.isDefault) {
+    return c.text('The default role cannot be deleted', 403);
+  }
+
+  if (!access.isOwner && role.position >= access.highestPosition) {
+    return c.text('Forbidden', 403);
+  }
+
+  const remaining = await prisma.role.findMany({
+    where: { serverId, isDefault: false, id: { not: role.id } },
+    select: { id: true, position: true },
+    orderBy: { position: 'asc' },
+  });
+
+  try {
+    await prisma.$transaction([prisma.role.delete({ where: { id: role.id } }), ...remaining.map((entry, index) => prisma.role.update({ where: { id: entry.id }, data: { position: index + 1 } }))]);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Role order changed, retry', 409);
+    }
+    throw error;
+  }
+
+  return c.body(null, 204);
+});
+
+app.put('/:id/roles/order', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, roleMutationLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ roleIds: roleIdsSchema }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid role order', 400);
+  }
+
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_ROLES);
+  if (access instanceof Response) return access;
+
+  if (!access.isOwner && access.highestPosition === 0) {
+    return c.text('Forbidden', 403);
+  }
+
+  const roleIds = result.data.roleIds;
+  const current = await prisma.role.findMany({
+    where: { serverId },
+    select: { id: true, position: true, isDefault: true },
+    orderBy: { position: 'asc' },
+  });
+
+  const nonDefault = current.filter((role) => !role.isDefault);
+  const currentIds = new Set(nonDefault.map((role) => role.id));
+
+  if (roleIds.length !== nonDefault.length || roleIds.some((id) => !currentIds.has(id))) {
+    return c.text('Invalid role order', 400);
+  }
+
+  if (!access.isOwner) {
+    const protectedIds = nonDefault.filter((role) => role.position >= access.highestPosition).map((role) => role.id);
+    const suffix = roleIds.slice(roleIds.length - protectedIds.length);
+
+    if (suffix.length !== protectedIds.length || suffix.some((id, index) => id !== protectedIds[index])) {
+      return c.text('Forbidden', 403);
+    }
+  }
+
+  try {
+    await prisma.$transaction([
+      ...roleIds.map((id, index) => prisma.role.update({ where: { id }, data: { position: -(index + 1) } })),
+      ...roleIds.map((id, index) => prisma.role.update({ where: { id }, data: { position: index + 1 } })),
+    ]);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.text('Role order changed, retry', 409);
+    }
+    throw error;
+  }
+
+  const ordered = await prisma.role.findMany({
+    where: { serverId },
+    select: roleSelect,
+    orderBy: { position: 'asc' },
+  });
+
+  return c.json(ordered, 200);
+});
+
+app.put('/:id/members/:userId/roles', async (c) => {
+  if (!c.get('user') || !c.get('session')) {
+    return c.text('This endpoint requires authentication', 401);
+  }
+
+  const userId = c.get('user')!.id;
+  const limited = enforceRateLimit(c, roleMutationLimiter, userId);
+  if (limited) return limited;
+
+  const body = await c.req.json().catch(() => null);
+  const result = z.object({ roleIds: roleIdsSchema }).safeParse(body);
+
+  if (!result.success) {
+    return c.text('Invalid role assignment', 400);
+  }
+
+  const serverId = c.req.param('id');
+  const access = await requirePermission(serverId, userId, PERMISSIONS.MANAGE_ROLES);
+  if (access instanceof Response) return access;
+
+  if (!access.isOwner && access.highestPosition === 0) {
+    return c.text('Forbidden', 403);
+  }
+
+  const targetId = c.req.param('userId');
+  const target = await getMemberAccess(serverId, targetId);
+
+  if (!target) {
+    return c.text('Member not found', 404);
+  }
+
+  if (target.isOwner) {
+    return c.text('The server owner already has every permission', 400);
+  }
+
+  if (!access.isOwner && target.highestPosition >= access.highestPosition) {
+    return c.text('Forbidden', 403);
+  }
+
+  const membership = await prisma.serverMember.findUnique({
+    where: { serverId_userId: { serverId, userId: targetId } },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    return c.text('Member not found', 404);
+  }
+
+  const roleIds = result.data.roleIds;
+
+  if (roleIds.length > 0) {
+    const roles = await prisma.role.findMany({
+      where: { id: { in: roleIds }, serverId },
+      select: { id: true, position: true, permissions: true, isDefault: true },
+    });
+
+    if (roles.length !== roleIds.length) {
+      return c.text('Invalid role', 400);
+    }
+
+    if (roles.some((role) => role.isDefault)) {
+      return c.text('The default role cannot be assigned', 400);
+    }
+
+    if (!access.isOwner) {
+      if (roles.some((role) => role.position >= access.highestPosition)) {
+        return c.text('Forbidden', 403);
+      }
+
+      if (roles.some((role) => (role.permissions & ~access.permissions) !== 0)) {
+        return c.text('Forbidden', 403);
+      }
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.memberRole.deleteMany({ where: { serverMemberId: membership.id } }),
+    ...(roleIds.length > 0 ? [prisma.memberRole.createMany({ data: roleIds.map((roleId) => ({ id: generateId(), roleId, serverMemberId: membership.id })) })] : []),
+  ]);
+
+  return c.body(null, 204);
 });
 
 app.post('/:id/categories', async (c) => {
