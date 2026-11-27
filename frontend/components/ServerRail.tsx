@@ -9,7 +9,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, 
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, LogOut, MessageCircle, Plus, Settings, Ticket, UserPlus, Users } from 'lucide-react';
+import { Ban, LogOut, MessageCircle, Plus, Settings, UserPlus, Users } from 'lucide-react';
 import { createServer, getPendingRequests, getServers, getUser, joinServer, logout, reorderServers } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -33,7 +33,6 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
   const channel = firstChannel(server);
   const href = channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me';
-  const canManageInvites = hasPermission(server, PERMISSIONS.MANAGE_INVITES);
   const canBanMembers = hasPermission(server, PERMISSIONS.BAN_MEMBERS);
 
   return (
@@ -64,12 +63,6 @@ function SortableServer({ server, isActive, user, onAction }: { server: Server; 
             Invite people
           </ContextMenuItem>
           <ContextMenuSeparator />
-          {canManageInvites && (
-            <ContextMenuItem onSelect={() => onAction('invites')}>
-              <Ticket />
-              Active invites
-            </ContextMenuItem>
-          )}
           {canBanMembers && (
             <ContextMenuItem onSelect={() => onAction('bans')}>
               <Ban />

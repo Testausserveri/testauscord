@@ -183,7 +183,7 @@ export function ServerActionDialogs({ server, action, inviteChannel = null, onCl
             </Button>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {canManageInvites && <p className="text-xs text-muted-foreground">{inviteChannel ? 'Manage existing codes from the channel menu.' : 'Manage existing codes from Active invites.'}</p>}
+          {canManageInvites && <p className="text-xs text-muted-foreground">{inviteChannel ? 'Manage existing codes from the channel menu.' : 'Manage existing codes from Server settings.'}</p>}
         </DialogContent>
       </Dialog>
 

@@ -485,17 +485,6 @@ export function ServerSidebar() {
               Invite people
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {canManageInvites && (
-              <DropdownMenuItem
-                onSelect={() => {
-                  setInviteChannel(null);
-                  setAction('invites');
-                }}
-              >
-                <Ticket />
-                Active invites
-              </DropdownMenuItem>
-            )}
             {canBanMembers && (
               <DropdownMenuItem onSelect={() => setAction('bans')}>
                 <Ban />

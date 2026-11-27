@@ -13,9 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OverviewTab } from '@/components/server-settings/OverviewTab';
 import { RolesTab } from '@/components/server-settings/RolesTab';
+import { InvitesTab } from '@/components/server-settings/InvitesTab';
 
-const TABS: ServerSettingsTab[] = ['overview', 'roles'];
-const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles' };
+const TABS: ServerSettingsTab[] = ['overview', 'roles', 'invites'];
+const TAB_LABELS: Record<ServerSettingsTab, string> = { overview: 'Overview', roles: 'Roles', invites: 'Invites' };
 
 const isServerSettingsTab = (value: string | null): value is ServerSettingsTab => value !== null && TABS.includes(value as ServerSettingsTab);
 
@@ -107,6 +108,9 @@ function ServerSettingsContent() {
               ) : (
                 <p className="text-sm text-muted-foreground">Roles unavailable.</p>
               )}
+            </TabsContent>
+            <TabsContent value="invites" className="min-w-0 flex-1">
+              <InvitesTab server={server} />
             </TabsContent>
           </div>
         </Tabs>
