@@ -151,16 +151,12 @@ export const createServer = async (name: string): Promise<Server> => {
   return await axios.post(`${API_URL}/servers/create`, { name }, { withCredentials: true }).then((res) => res.data);
 };
 
-export const joinServer = async (code: string): Promise<Server> => {
+export const joinServer = async (code: string): Promise<Server & { inviteChannelId?: string | null }> => {
   return await axios.post(`${API_URL}/servers/join`, { code }, { withCredentials: true }).then((res) => res.data);
 };
 
 export const createChannel = async (serverId: string, name: string, categoryId?: string): Promise<ServerChannel> => {
   return await axios.post(`${API_URL}/servers/${serverId}/channels`, categoryId ? { name, categoryId } : { name }, { withCredentials: true }).then((res) => res.data);
-};
-
-export const updateChannelCategory = async (serverId: string, channelId: string, categoryId: string | null): Promise<ServerChannel> => {
-  return await axios.patch(`${API_URL}/servers/${serverId}/channels/${channelId}`, { categoryId }, { withCredentials: true }).then((res) => res.data);
 };
 
 export const renameChannel = async (serverId: string, channelId: string, name: string): Promise<ServerChannel> => {
@@ -187,8 +183,8 @@ export const updateServer = async (serverId: string, patch: ServerPatch): Promis
   return await axios.patch(`${API_URL}/servers/${serverId}`, patch, { withCredentials: true }).then((res) => res.data);
 };
 
-export const createInvite = async (serverId: string): Promise<{ code: string }> => {
-  return await axios.post(`${API_URL}/servers/${serverId}/invites`, {}, { withCredentials: true }).then((res) => res.data);
+export const createInvite = async (serverId: string, channelId?: string): Promise<{ code: string }> => {
+  return await axios.post(`${API_URL}/servers/${serverId}/invites`, channelId ? { channelId } : {}, { withCredentials: true }).then((res) => res.data);
 };
 
 export const getInvites = async (serverId: string): Promise<ServerInvite[]> => {

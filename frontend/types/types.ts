@@ -107,6 +107,7 @@ export type ServerInvite = {
   code: string;
   createdAt: string;
   expiresAt: string;
+  channel: { id: string; name: string } | null;
   createdBy: UserRef;
 };
 

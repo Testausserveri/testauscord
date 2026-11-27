@@ -10,9 +10,9 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import type { CollisionDetection, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Ban, ChevronDown, FolderPlus, Hash, LogOut, MoreHorizontal, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
+import { Ban, ChevronDown, FolderPlus, Hash, LogOut, Pencil, Plus, Settings, Ticket, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCategory, createChannel, deleteCategory, getServers, getUser, renameChannel, updateCategory, updateChannelCategory, updateServerLayout } from '@/api/api';
+import { createCategory, createChannel, deleteCategory, getServers, getUser, renameChannel, updateCategory, updateServerLayout } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
 import { CurrentUser, Server, ServerAction, ServerCategory, ServerChannel, ServerDetail, ServerLayoutGroup } from '@/types/types';
@@ -22,7 +22,7 @@ import { groupServer, moveCategory, moveChannel, toLayoutPayload } from '@/lib/s
 import { Button } from '@/components/ui/button';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ServerActionDialogs } from '@/components/ServerActionDialogs';
@@ -98,57 +98,54 @@ function SortableChannel({
   serverId,
   isActive,
   isOwner,
-  categories,
-  onMove,
+  onInvite,
+  onViewInvites,
   onRename,
 }: {
   channel: ServerChannel;
   serverId: string;
   isActive: boolean;
   isOwner: boolean;
-  categories: ServerCategory[];
-  onMove: (channelId: string, categoryId: string | null) => void;
+  onInvite: () => void;
+  onViewInvites: () => void;
   onRename: () => void;
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `channel:${channel.id}` });
 
   return (
     <SidebarMenuItem ref={setNodeRef} style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition }} className={cn(isDragging && 'opacity-0')}>
-      <SidebarMenuButton asChild isActive={isActive}>
-        <Link {...(isOwner ? listeners : {})} href={`/channels/${serverId}/${channel.id}`} draggable={false} className="py-4">
-          <Hash className="h-5! w-5!" />
-          <span>{channel.name}</span>
-        </Link>
-      </SidebarMenuButton>
-      {isOwner && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuAction showOnHover title="Channel options" aria-label="Channel options">
-              <MoreHorizontal />
-            </SidebarMenuAction>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={onRename}>
-              <Pencil />
-              Rename
-            </DropdownMenuItem>
-            {categories.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Move to</DropdownMenuLabel>
-                <DropdownMenuItem disabled={!channel.categoryId} onSelect={() => onMove(channel.id, null)}>
-                  Uncategorized
-                </DropdownMenuItem>
-                {categories.map((category) => (
-                  <DropdownMenuItem key={category.id} disabled={channel.categoryId === category.id} onSelect={() => onMove(channel.id, category.id)}>
-                    {category.name}
-                  </DropdownMenuItem>
-                ))}
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <ContextMenu>
+        <ContextMenuTrigger asChild onContextMenu={(event) => event.stopPropagation()}>
+          <SidebarMenuButton asChild isActive={isActive}>
+            <Link {...(isOwner ? listeners : {})} href={`/channels/${serverId}/${channel.id}`} draggable={false} className="py-4">
+              <Hash className="h-5! w-5!" />
+              <span>{channel.name}</span>
+            </Link>
+          </SidebarMenuButton>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem onSelect={onInvite}>
+            <UserPlus />
+            Invite to channel
+          </ContextMenuItem>
+          {isOwner && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={onViewInvites}>
+                <Ticket />
+                View invites
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={onRename}>
+                <Pencil />
+                Rename
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+      <SidebarMenuAction showOnHover type="button" onClick={onInvite} title="Invite to channel" aria-label="Invite to channel">
+        <UserPlus />
+      </SidebarMenuAction>
     </SidebarMenuItem>
   );
 }
@@ -222,6 +219,7 @@ export function ServerSidebar() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [action, setAction] = useState<ServerAction | null>(null);
+  const [inviteChannel, setInviteChannel] = useState<ServerChannel | null>(null);
   const [channelTarget, setChannelTarget] = useState<{ categoryId: string | null } | null>(null);
   const [channelName, setChannelName] = useState('');
   const [channelRename, setChannelRename] = useState<ServerChannel | null>(null);
@@ -388,16 +386,14 @@ export function ServerSidebar() {
     }
   };
 
-  const handleMoveChannel = async (channelId: string, categoryId: string | null) => {
-    if (!server) return;
+  const openChannelInvite = (channel: ServerChannel) => {
+    setInviteChannel(channel);
+    setAction('invite');
+  };
 
-    try {
-      await updateChannelCategory(server.id, channelId, categoryId);
-      await queryClient.invalidateQueries({ queryKey: ['servers'] });
-      await queryClient.invalidateQueries({ queryKey: ['server', server.id] });
-    } catch (caught) {
-      toast.error(apiErrorMessage(caught));
-    }
+  const openChannelInvites = (channel: ServerChannel) => {
+    setInviteChannel(channel);
+    setAction('invites');
   };
 
   const handleLayoutDragStart = (event: DragStartEvent) => {
@@ -471,14 +467,25 @@ export function ServerSidebar() {
               <Users />
               Members
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={!server} onSelect={() => setAction('invite')}>
+            <DropdownMenuItem
+              disabled={!server}
+              onSelect={() => {
+                setInviteChannel(null);
+                setAction('invite');
+              }}
+            >
               <UserPlus />
               Invite people
             </DropdownMenuItem>
             {isOwner && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setAction('invites')}>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setInviteChannel(null);
+                    setAction('invites');
+                  }}
+                >
                   <Ticket />
                   Active invites
                 </DropdownMenuItem>
@@ -546,8 +553,8 @@ export function ServerSidebar() {
                                   serverId={server.id}
                                   isActive={route?.channelId === channel.id}
                                   isOwner={isOwner}
-                                  categories={categories}
-                                  onMove={handleMoveChannel}
+                                  onInvite={() => openChannelInvite(channel)}
+                                  onViewInvites={() => openChannelInvites(channel)}
                                   onRename={() => openChannelRename(channel)}
                                 />
                               ))}
@@ -587,8 +594,8 @@ export function ServerSidebar() {
                                         serverId={server.id}
                                         isActive={route?.channelId === channel.id}
                                         isOwner={isOwner}
-                                        categories={categories}
-                                        onMove={handleMoveChannel}
+                                        onInvite={() => openChannelInvite(channel)}
+                                        onViewInvites={() => openChannelInvites(channel)}
                                         onRename={() => openChannelRename(channel)}
                                       />
                                     ))}
@@ -733,7 +740,15 @@ export function ServerSidebar() {
         </DialogContent>
       </Dialog>
 
-      <ServerActionDialogs server={server ?? null} action={action} onClose={() => setAction(null)} />
+      <ServerActionDialogs
+        server={server ?? null}
+        action={action}
+        inviteChannel={inviteChannel}
+        onClose={() => {
+          setAction(null);
+          setInviteChannel(null);
+        }}
+      />
     </Sidebar>
   );
 }

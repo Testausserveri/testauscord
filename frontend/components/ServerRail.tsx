@@ -157,7 +157,7 @@ export function ServerRail() {
     });
   };
 
-  const enterServer = (server: Server) => {
+  const enterServer = (server: Server & { inviteChannelId?: string | null }) => {
     queryClient.invalidateQueries({ queryKey: ['servers'] });
     queryClient.invalidateQueries({ queryKey: ['server', server.id] });
     setSheetOpen(false);
@@ -165,7 +165,8 @@ export function ServerRail() {
     setInviteCode('');
     setError(null);
 
-    const channel = firstChannel(server);
+    const inviteChannel = server.inviteChannelId ? server.channels.find((entry) => entry.id === server.inviteChannelId) : undefined;
+    const channel = inviteChannel ?? firstChannel(server);
     router.push(channel ? `/channels/${server.id}/${channel.id}` : '/channels/@me');
   };
 
