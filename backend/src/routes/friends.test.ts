@@ -80,6 +80,13 @@ const upsertFriendship = mock(async ({ where, create }: { where: FriendshipWhere
   return row;
 });
 
+const deleteFriendship = mock(async ({ where }: { where: { id: string } }) => {
+  const index = friendships.findIndex((entry) => entry.id === where.id);
+  if (index === -1) throw new Error('Record not found');
+
+  return friendships.splice(index, 1)[0];
+});
+
 const upsertChannel = mock(async ({ where, create }: { where: { dmKey: string }; create: { id: string; dmKey: string } }) => {
   const existing = channels.find((entry) => entry.dmKey === where.dmKey);
   if (existing) return existing;
@@ -104,7 +111,7 @@ const prismaMock = {
     create: createRequest,
     deleteMany: deleteRequests,
   },
-  friendship: { findUnique: findFriendship, upsert: upsertFriendship },
+  friendship: { findUnique: findFriendship, upsert: upsertFriendship, delete: deleteFriendship },
   channel: { upsert: upsertChannel },
   channelMember: { createMany: createChannelMembers },
 };
@@ -365,6 +372,19 @@ test('returns 404 when removing a non-friend', async () => {
   const response = await post(createApp(alice), '/remove', { target: 'bob' });
 
   expect(response.status).toBe(404);
+});
+
+test('removes a friend and keeps the DM channel and memberships', async () => {
+  friendships.push({ id: 'friendship-remove', ...friendPair(alice.id, bob.id), createdAt: new Date() });
+  channels.push({ id: 'channel-remove', dmKey: `${alice.id}:${bob.id}` });
+  members.push({ channelId: 'channel-remove', userId: alice.id }, { channelId: 'channel-remove', userId: bob.id });
+
+  const response = await post(createApp(alice), '/remove', { target: 'bob' });
+
+  expect(response.status).toBe(200);
+  expect(friendships).toEqual([]);
+  expect(channels).toHaveLength(1);
+  expect(members).toHaveLength(2);
 });
 
 test('throttles friend request sends per user', async () => {

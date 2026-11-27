@@ -291,25 +291,8 @@ app.post('/remove', async (c) => {
     return c.text('You are not friends with this user', 404);
   }
 
-  const dmKey = directChannelKey(c.get('user')!.id, targetUser.id);
-  const channel = await prisma.channel.findUnique({
-    where: { dmKey },
-    select: { id: true },
-  });
-
-  await prisma.$transaction(async (tx) => {
-    await tx.friendship.delete({
-      where: { id: friendship.id },
-    });
-
-    if (channel) {
-      await tx.channelMember.deleteMany({
-        where: {
-          channelId: channel.id,
-          userId: { in: [c.get('user')!.id, targetUser.id] },
-        },
-      });
-    }
+  await prisma.friendship.delete({
+    where: { id: friendship.id },
   });
 
   return c.text('Friend removed', 200);
