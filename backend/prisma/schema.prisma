@@ -24,6 +24,7 @@ model User {
   displayName String?
   bio String?
   avatarVersion Int?
+  allowDmsFromServerMembers Boolean @default(true)
   password String
   sessions Session[]
 

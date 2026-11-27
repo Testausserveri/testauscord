@@ -3,20 +3,30 @@ import { Hono } from 'hono';
 import { eventBus, type DomainEvent } from '../realtime/bus';
 import type { Variables } from '../types/types';
 
-type Row = { id: string; username: string; displayName: string | null; bio: string | null; avatarVersion: number | null };
+type Row = { id: string; username: string; displayName: string | null; bio: string | null; avatarVersion: number | null; allowDmsFromServerMembers: boolean };
 
 let users: Record<string, Row> = {};
 let friendship: { id: string } | null = null;
 let sharedServer: { id: string } | null = null;
 let pendingRequest: { id: string } | null = null;
+let directChannel: { id: string } | null = null;
 let takenUsername: string | null = null;
 let friendships: { userAId: string; userBId: string }[] = [];
 
-const findUser = mock(async ({ where }: { where: { id: string } }) => users[where.id] ?? null);
+type Select = Partial<Record<keyof Row, true>>;
+
+const findUser = mock(async ({ where, select }: { where: { id: string }; select?: Select }) => {
+  const user = users[where.id];
+  if (!user) return null;
+  if (!select) return user;
+
+  return Object.fromEntries(Object.entries(select).map(([key]) => [key, user[key as keyof Row]]));
+});
 const findFriendship = mock(async () => friendship);
 const findServerMember = mock(async () => sharedServer);
 const findFriendRequest = mock(async () => pendingRequest);
 const findFriendships = mock(async () => friendships);
+const findChannel = mock(async () => directChannel);
 const updateUser = mock(async ({ where, data }: { where: { id: string }; data: Partial<Pick<Row, 'username' | 'displayName' | 'bio' | 'avatarVersion'>> }) => {
   if (takenUsername !== null && data.username === takenUsername) {
     throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
@@ -32,6 +42,7 @@ const prismaMock = {
   friendship: { findUnique: findFriendship, findMany: findFriendships },
   serverMember: { findFirst: findServerMember },
   friendRequest: { findFirst: findFriendRequest },
+  channel: { findUnique: findChannel },
   avatar: { upsert: mock(async () => undefined), deleteMany: mock(async () => ({ count: 1 })) },
 };
 
@@ -92,6 +103,7 @@ const profile = (id: string): Row => ({
   displayName: id === 'viewer' ? 'Viewer' : null,
   bio: id === 'viewer' ? 'hello' : null,
   avatarVersion: null,
+  allowDmsFromServerMembers: true,
 });
 
 beforeEach(() => {
@@ -108,6 +120,7 @@ beforeEach(() => {
   friendship = null;
   sharedServer = null;
   pendingRequest = null;
+  directChannel = null;
   takenUsername = null;
   friendships = [];
 });
@@ -118,7 +131,7 @@ test('returns the full profile for the current user', async () => {
   const response = await app.request('/users/@me');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'viewer', username: 'viewer', displayName: 'Viewer', bio: 'hello', avatarVersion: null });
+  expect(await response.json()).toEqual({ id: 'viewer', username: 'viewer', displayName: 'Viewer', bio: 'hello', avatarVersion: null, allowDmsFromServerMembers: true });
 });
 
 test('returns a friend profile', async () => {
@@ -127,7 +140,7 @@ test('returns a friend profile', async () => {
   const response = await app.request('/users/friend');
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null, avatarVersion: null });
+  expect(await response.json()).toEqual({ id: 'friend', username: 'friend', displayName: null, bio: null, avatarVersion: null, canDm: true });
 });
 
 test('returns a profile for a pending request', async () => {
@@ -137,6 +150,49 @@ test('returns a profile for a pending request', async () => {
 
   expect(response.status).toBe(200);
   expect(((await response.json()) as { id: string }).id).toBe('stranger');
+});
+
+test('computes canDm from friendships, shared servers and existing conversations', async () => {
+  sharedServer = { id: 'member-1' };
+
+  const sharedAllowed = await app.request('/users/stranger');
+  expect(((await sharedAllowed.json()) as { canDm: boolean }).canDm).toBe(true);
+
+  users.stranger = { ...users.stranger!, allowDmsFromServerMembers: false };
+
+  const sharedBlocked = await app.request('/users/stranger');
+  expect(((await sharedBlocked.json()) as { canDm: boolean }).canDm).toBe(false);
+
+  directChannel = { id: 'channel-1' };
+
+  const existingDm = await app.request('/users/stranger');
+  expect(((await existingDm.json()) as { canDm: boolean }).canDm).toBe(true);
+
+  sharedServer = null;
+  directChannel = null;
+  pendingRequest = { id: 'request-1' };
+
+  const pending = await app.request('/users/stranger');
+  expect(((await pending.json()) as { canDm: boolean }).canDm).toBe(false);
+});
+
+test('never exposes the privacy preference on another profile', async () => {
+  sharedServer = { id: 'member-1' };
+
+  const response = await app.request('/users/stranger');
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ id: 'stranger', username: 'stranger', displayName: null, bio: null, avatarVersion: null, canDm: true });
+});
+
+test('updates the DM privacy preference', async () => {
+  const disabled = await patchProfile(writerApp, { allowDmsFromServerMembers: false });
+  expect(disabled.status).toBe(200);
+  expect(((await disabled.json()) as Row).allowDmsFromServerMembers).toBe(false);
+
+  const enabled = await patchProfile(writerApp, { allowDmsFromServerMembers: true });
+  expect(enabled.status).toBe(200);
+  expect(((await enabled.json()) as Row).allowDmsFromServerMembers).toBe(true);
 });
 
 test('hides unrelated and missing users with the same response', async () => {
@@ -173,7 +229,7 @@ test('updates and normalizes display name and bio', async () => {
   const response = await patchProfile(writerApp, { displayName: '  Alice  ', bio: 'hello\r\nworld  \r\n' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: 'Alice', bio: 'hello\nworld', avatarVersion: null });
+  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: 'Alice', bio: 'hello\nworld', avatarVersion: null, allowDmsFromServerMembers: true });
 });
 
 test('clears display name and bio when empty', async () => {
@@ -182,7 +238,7 @@ test('clears display name and bio when empty', async () => {
   const response = await patchProfile(writerApp, { displayName: '   ', bio: '' });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: null, bio: null, avatarVersion: null });
+  expect(await response.json()).toEqual({ id: 'writer', username: 'writer', displayName: null, bio: null, avatarVersion: null, allowDmsFromServerMembers: true });
 });
 
 test('changes the username and keeps the same name a no-op', async () => {
@@ -207,6 +263,7 @@ test('rejects invalid profile fields', async () => {
     { bio: 'bad\u0000' },
     { bio: 'bad\u0007' },
     { bio: 'bad\u202E' },
+    { allowDmsFromServerMembers: 'yes' },
     {},
     { nickname: 'x' },
   ];

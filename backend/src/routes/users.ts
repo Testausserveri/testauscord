@@ -5,7 +5,8 @@ import { prisma } from '../db';
 import { enforceRateLimit } from '../middleware/rateLimit';
 import { eventBus } from '../realtime/bus';
 import { imageColumns, imageResponse, parseImageUpdate } from '../services/images';
-import { canViewUser, type ProfileDTO } from '../services/profiles';
+import { canViewUser, type AccountDTO, type ProfileDTO } from '../services/profiles';
+import { canStartDm } from '../services/directMessages';
 import { createRateLimiter } from '../utils/rateLimit';
 import { containsBidiControls, containsControlChars, isValidUsername } from '../utils/validation';
 
@@ -17,6 +18,7 @@ const usernameChangeLimiter = createRateLimiter(10, 60 * 60_000);
 const MAX_PROFILE_EVENT_RECIPIENTS = 500;
 
 const profileSelect = { id: true, username: true, displayName: true, bio: true, avatarVersion: true } as const;
+const accountSelect = { ...profileSelect, allowDmsFromServerMembers: true } as const;
 
 const profilePatchSchema = z
   .object({
@@ -25,9 +27,10 @@ const profilePatchSchema = z
     bio: z.string().nullable().optional(),
     avatar: z.string().nullable().optional(),
     avatarPoster: z.string().optional(),
+    allowDmsFromServerMembers: z.boolean().optional(),
   })
   .strict()
-  .refine((value) => value.username !== undefined || value.displayName !== undefined || value.bio !== undefined || value.avatar !== undefined);
+  .refine((value) => value.username !== undefined || value.displayName !== undefined || value.bio !== undefined || value.avatar !== undefined || value.allowDmsFromServerMembers !== undefined);
 
 const isUniqueConstraintError = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
@@ -63,7 +66,7 @@ app.patch('/users/@me', async (c) => {
     return c.text('Invalid profile', 400);
   }
 
-  const { username, displayName, bio, avatar, avatarPoster } = result.data;
+  const { username, displayName, bio, avatar, avatarPoster, allowDmsFromServerMembers } = result.data;
 
   if (username !== undefined) {
     const usernameLimited = enforceRateLimit(c, usernameChangeLimiter, viewerId);
@@ -99,15 +102,22 @@ app.patch('/users/@me', async (c) => {
   const avatarWrite = avatarUpdate.update.image;
   const posterWrite = avatarUpdate.update.poster;
 
-  const data: { username?: string; displayName?: string | null; bio?: string | null; avatarVersion?: number | null } = {};
+  const data: {
+    username?: string;
+    displayName?: string | null;
+    bio?: string | null;
+    avatarVersion?: number | null;
+    allowDmsFromServerMembers?: boolean;
+  } = {};
 
   if (username !== undefined) data.username = username;
   if (nextDisplayName !== undefined) data.displayName = nextDisplayName;
   if (nextBio !== undefined) data.bio = nextBio;
+  if (allowDmsFromServerMembers !== undefined) data.allowDmsFromServerMembers = allowDmsFromServerMembers;
   if (avatarWrite !== undefined) data.avatarVersion = 'clear' in avatarWrite ? null : avatarWrite.version;
 
   try {
-    const user: ProfileDTO = await prisma.$transaction(async (tx) => {
+    const user: AccountDTO = await prisma.$transaction(async (tx) => {
       if (avatarWrite !== undefined) {
         if ('clear' in avatarWrite) {
           await tx.avatar.deleteMany({ where: { userId: viewerId } });
@@ -122,7 +132,7 @@ app.patch('/users/@me', async (c) => {
         }
       }
 
-      return tx.user.update({ where: { id: viewerId }, data, select: profileSelect });
+      return tx.user.update({ where: { id: viewerId }, data, select: accountSelect });
     });
 
     const friendships = await prisma.friendship.findMany({
@@ -197,16 +207,29 @@ app.get('/users/:id', async (c) => {
 
   const targetId = c.req.param('id') === '@me' ? viewerId : c.req.param('id');
 
+  if (targetId === viewerId) {
+    const user: AccountDTO | null = await prisma.user.findUnique({
+      where: { id: viewerId },
+      select: accountSelect,
+    });
+
+    if (!user) {
+      return c.text('User not found', 404);
+    }
+
+    return c.json(user, 200);
+  }
+
   const user: ProfileDTO | null = await prisma.user.findUnique({
     where: { id: targetId },
     select: profileSelect,
   });
 
-  if (!user || (user.id !== viewerId && !(await canViewUser(viewerId, user.id)))) {
+  if (!user || !(await canViewUser(viewerId, user.id))) {
     return c.text('User not found', 404);
   }
 
-  return c.json(user, 200);
+  return c.json({ ...user, canDm: await canStartDm(viewerId, user.id) }, 200);
 });
 
 export default app;

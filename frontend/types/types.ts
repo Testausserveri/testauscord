@@ -7,6 +7,12 @@ export type UserRef = {
 
 export type ProfileDTO = UserRef & {
   bio: string | null;
+  canDm?: boolean;
+};
+
+export type AccountDTO = UserRef & {
+  bio: string | null;
+  allowDmsFromServerMembers: boolean;
 };
 
 export type ProfilePatch = {
@@ -15,9 +21,10 @@ export type ProfilePatch = {
   bio?: string | null;
   avatar?: string | null;
   avatarPoster?: string;
+  allowDmsFromServerMembers?: boolean;
 };
 
-export type CurrentUser = ProfileDTO;
+export type CurrentUser = AccountDTO;
 
 export type AccountSession = {
   id: string;

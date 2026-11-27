@@ -3,6 +3,7 @@ import type { UserRef } from '../realtime/protocol';
 import { friendPair } from './directMessages';
 
 export type ProfileDTO = UserRef & { bio: string | null };
+export type AccountDTO = ProfileDTO & { allowDmsFromServerMembers: boolean };
 
 export const getUserRef = async (userId: string): Promise<UserRef | null> => {
   return prisma.user.findUnique({

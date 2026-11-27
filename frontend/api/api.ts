@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { AxiosError } from 'axios';
 import { logoutToLogin } from '@/lib/logout';
 import type {
+  AccountDTO,
   AccountSession,
   CurrentUser,
   IncomingFriendRequest,
@@ -107,7 +108,7 @@ export const getUserProfile = async (id: string): Promise<ProfileDTO> => {
   return await axios.get(`${API_URL}/users/${encodeURIComponent(id)}`, { withCredentials: true }).then((res) => res.data);
 };
 
-export const updateProfile = async (patch: ProfilePatch): Promise<ProfileDTO> => {
+export const updateProfile = async (patch: ProfilePatch): Promise<AccountDTO> => {
   return await axios.patch(`${API_URL}/users/@me`, patch, { withCredentials: true }).then((res) => res.data);
 };
 
