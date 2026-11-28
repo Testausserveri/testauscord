@@ -43,7 +43,7 @@ export function FriendsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-4 py-3 border-b flex items-center gap-2">
+      <header className="flex h-14 items-center gap-2 border-b px-4">
         <Users className="h-6! w-6!" />
         <h1 className="font-semibold">Friends</h1>
       </header>

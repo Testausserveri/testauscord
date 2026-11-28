@@ -184,7 +184,7 @@ export function ChannelChat({ channelId, header, placeholder }: ChannelChatProps
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-4 py-3 border-b flex items-center">{header}</header>
+      <header className="flex h-14 items-center border-b px-4">{header}</header>
 
       <div ref={scrollContainerRef} className="flex-1 overflow-auto" onScroll={handleScroll}>
         {messagesPending ? (

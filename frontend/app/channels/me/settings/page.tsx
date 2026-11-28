@@ -43,7 +43,7 @@ function SettingsContent() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-center gap-3 border-b p-4">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
         <Button type="button" variant="ghost" size="icon" onClick={goBack} title="Back" aria-label="Back">
           <ArrowLeft />
         </Button>
@@ -51,7 +51,7 @@ function SettingsContent() {
       </header>
 
       <Tabs value={tab} onValueChange={(value) => selectTab(value as SettingsTab)} orientation="vertical" className="flex min-h-0 flex-1 flex-col gap-0 md:flex-row">
-        <TabsList className="h-auto w-full shrink-0 flex-row justify-start overflow-x-auto rounded-none border-b bg-sidebar p-2 md:h-full md:w-56 md:flex-col md:items-stretch md:border-r md:border-b-0">
+        <TabsList className="h-auto w-full shrink-0 flex-row justify-start overflow-x-auto rounded-none border-b bg-sidebar p-2 md:h-full md:w-64 md:flex-col md:items-stretch md:border-r md:border-b-0">
           <TabsTrigger value="account" className="h-9 flex-1 justify-start md:flex-none">
             My Account
           </TabsTrigger>
