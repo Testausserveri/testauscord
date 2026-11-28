@@ -9,6 +9,7 @@ import type {
   Friend,
   IncomingFriendRequest,
   OutgoingFriendRequest,
+  PresenceStatus,
   ProfileDTO,
   ProfilePatch,
   RolePatch,
@@ -114,6 +115,10 @@ export const getUserProfile = async (id: string): Promise<ProfileDTO> => {
 
 export const updateProfile = async (patch: ProfilePatch): Promise<AccountDTO> => {
   return await axios.patch(`${API_URL}/users/@me`, patch, { withCredentials: true }).then((res) => res.data);
+};
+
+export const updatePresence = async (status: PresenceStatus): Promise<{ presenceStatus: PresenceStatus }> => {
+  return await axios.put(`${API_URL}/users/@me/presence`, { status }, { withCredentials: true }).then((res) => res.data);
 };
 
 export const getFriends = async (): Promise<Friend[]> => {

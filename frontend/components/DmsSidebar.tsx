@@ -73,7 +73,7 @@ export function DmsSidebar() {
                 <SidebarMenuItem key={dm.channelId}>
                   <SidebarMenuButton asChild isActive={pathname === `/channels/@me/${dm.channelId}`}>
                     <Link href={`/channels/@me/${dm.channelId}`} data-avatar-hover className="py-5">
-                      <UserAvatar user={dm.user} className="h-8 w-8 mr-3" />
+                      <UserAvatar user={dm.user} showStatus status={dm.user.status} className="h-8 w-8 mr-3" />
                       <div className="flex-1">
                         <p className="font-semibold">{dm.user.displayName ?? dm.user.username}</p>
                       </div>

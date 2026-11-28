@@ -5,14 +5,21 @@ export type UserRef = {
   avatarVersion: number | null;
 };
 
+export type PresenceStatus = 'ONLINE' | 'IDLE' | 'DND' | 'INVISIBLE';
+
+export type EffectivePresence = 'ONLINE' | 'IDLE' | 'DND' | 'OFFLINE';
+
 export type ProfileDTO = UserRef & {
   bio: string | null;
   canDm?: boolean;
+  status: EffectivePresence | null;
 };
 
 export type AccountDTO = UserRef & {
   bio: string | null;
   allowDmsFromServerMembers: boolean;
+  presenceStatus: PresenceStatus;
+  status: EffectivePresence;
 };
 
 export type ProfilePatch = {
@@ -41,12 +48,12 @@ export type Friend = {
   channelId: string;
   friendshipId: string;
   friendsSince: string;
-  friend: UserRef;
+  friend: UserRef & { status: EffectivePresence };
 };
 
 export type DmConversation = {
   channelId: string;
-  user: UserRef;
+  user: UserRef & { status: EffectivePresence };
   createdAt: string;
 };
 
@@ -122,6 +129,7 @@ export type RolePatch = {
 export type ServerMember = UserRef & {
   joinedAt: string;
   roleIds: string[];
+  status: EffectivePresence;
 };
 
 export type ServerDetail = Server & {

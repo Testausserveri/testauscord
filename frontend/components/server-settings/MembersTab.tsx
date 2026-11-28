@@ -140,7 +140,7 @@ export function MembersTab({ server, detail }: Props) {
                   title="View profile"
                   className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline"
                 >
-                  <UserAvatar user={member} className="size-8" />
+                  <UserAvatar user={member} showStatus status={member.status} className="size-8" />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{member.displayName ?? member.username}</span>
                     <span className="block truncate text-xs text-muted-foreground">

@@ -13,7 +13,7 @@ export function FriendCard({ friend }: { friend: Friend }) {
   const name = friend.friend.displayName ?? friend.friend.username;
   const content = (
     <>
-      <UserAvatar user={friend.friend} className="h-8 w-8 mr-3" />
+      <UserAvatar user={friend.friend} showStatus status={friend.friend.status} className="h-8 w-8 mr-3" />
       <p className="font-semibold truncate">{name}</p>
     </>
   );
