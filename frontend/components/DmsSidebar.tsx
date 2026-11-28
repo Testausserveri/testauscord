@@ -38,7 +38,7 @@ export function DmsSidebar() {
   const pendingCount = pending?.length ?? 0;
 
   return (
-    <Sidebar style={state === 'expanded' ? { left: SERVER_RAIL_WIDTH } : undefined}>
+    <Sidebar style={{ left: state === 'expanded' ? SERVER_RAIL_WIDTH : `calc(${SERVER_RAIL_WIDTH}px - var(--sidebar-width))` }}>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
@@ -86,7 +86,7 @@ export function DmsSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <UserPanel />
+      <UserPanel className="md:hidden" />
     </Sidebar>
   );
 }

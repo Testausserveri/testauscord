@@ -10,23 +10,22 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { LogOut, MessageCircle, Plus, Settings, UserPlus } from 'lucide-react';
-import { createServer, getPendingRequests, getServers, getUser, joinServer, logout, reorderServers } from '@/api/api';
+import { createServer, getPendingRequests, getServers, getUser, joinServer, reorderServers } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { CurrentUser, IncomingFriendRequest, Server, ServerAction } from '@/types/types';
 import { firstChannel, getServerRoute } from '@/lib/serverRoutes';
 import { serverSettingsTabs } from '@/lib/serverSettings';
 import { SERVER_RAIL_WIDTH } from '@/lib/layout';
-import { logoutToLogin } from '@/lib/logout';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
 import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { ServerActionDialogs } from './ServerActionDialogs';
 import { ServerIcon } from './ServerIcon';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
+import { useSidebar } from './ui/sidebar';
 
 function SortableServer({ server, isActive, user, onAction }: { server: Server; isActive: boolean; user: CurrentUser | undefined; onAction: (action: ServerAction) => void }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: server.id });
@@ -82,6 +81,7 @@ export function ServerRail() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isMobile } = useSidebar();
   const route = getServerRoute(pathname);
   const isSettingsRoute = pathname === '/channels/me/settings' || pathname === '/channels/@me/settings';
 
@@ -89,8 +89,6 @@ export function ServerRail() {
   const [serverName, setServerName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [logoutOpen, setLogoutOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionServer, setActionServer] = useState<Server | null>(null);
   const [action, setAction] = useState<ServerAction | null>(null);
@@ -189,24 +187,11 @@ export function ServerRail() {
     }
   };
 
-  const handleLogout = async () => {
-    if (loggingOut) return;
-
-    setLoggingOut(true);
-    const result = await logout();
-
-    if (!result.success) {
-      toast.error(String(result.msg ?? 'Could not log out'));
-      setLoggingOut(false);
-      return;
-    }
-
-    logoutToLogin('logout');
-  };
-
   return (
     <nav style={{ width: SERVER_RAIL_WIDTH }} className="relative z-20 flex shrink-0 flex-col items-center gap-2 overflow-hidden border-r border-sidebar-border bg-sidebar py-3">
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto p-1 scrollbar-none [&::-webkit-scrollbar]:hidden">
+      <div
+        className={`flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto p-1 scrollbar-none [&::-webkit-scrollbar]:hidden ${isMobile || isSettingsRoute || route?.channelId === 'settings' ? '' : 'pb-20'}`}
+      >
         <Link
           href="/channels/@me"
           title="Direct Messages"
@@ -300,45 +285,6 @@ export function ServerRail() {
           </SheetContent>
         </Sheet>
       </div>
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!isSettingsRoute) router.push('/channels/@me/settings');
-        }}
-        title="Account settings"
-        aria-label="Account settings"
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sidebar-accent text-sidebar-accent-foreground transition-all hover:rounded-xl hover:bg-sidebar-accent/80 ${isSettingsRoute ? 'rounded-xl ring-2 ring-sidebar-ring' : ''}`}
-      >
-        <Settings className="h-5 w-5" />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setLogoutOpen(true)}
-        title="Log out"
-        aria-label="Log out"
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive text-white transition-all hover:rounded-xl hover:bg-destructive/90"
-      >
-        <LogOut className="h-5 w-5" />
-      </button>
-
-      <Dialog open={logoutOpen} onOpenChange={(open) => !loggingOut && setLogoutOpen(open)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Log out?</DialogTitle>
-            <DialogDescription>You will need to log in again to access your messages.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLogoutOpen(false)} disabled={loggingOut}>
-              Cancel
-            </Button>
-            <Button type="button" variant="destructive" onClick={handleLogout} disabled={loggingOut}>
-              Log out
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <ServerActionDialogs server={actionServer} action={action} onClose={() => setAction(null)} />
     </nav>

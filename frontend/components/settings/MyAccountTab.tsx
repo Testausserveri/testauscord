@@ -4,12 +4,13 @@ import { useState } from 'react';
 import type { SubmitEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { changePassword, getUser, updateProfile } from '@/api/api';
+import { changePassword, getUser, logout, updateProfile } from '@/api/api';
 import { apiErrorMessage } from '@/lib/apiError';
 import { logoutToLogin } from '@/lib/logout';
 import { useSettled } from '@/lib/useSettled';
 import type { CurrentUser } from '@/types/types';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -45,6 +46,9 @@ function MyAccountForm({ user }: { user: CurrentUser }) {
   const [confirmSettled, setConfirmSettled] = useSettled(confirmPassword);
   const [currentPasswordInvalid, setCurrentPasswordInvalid] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
+
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const usernameValid = isValidUsername(username);
   const showUsernameError = username.length > 0 && !usernameValid;
@@ -100,6 +104,21 @@ function MyAccountForm({ user }: { user: CurrentUser }) {
       setCurrentPasswordInvalid(message === 'Incorrect password');
       setPasswordBusy(false);
     }
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    const result = await logout();
+
+    if (!result.success) {
+      toast.error(String(result.msg ?? 'Could not log out'));
+      setLoggingOut(false);
+      return;
+    }
+
+    logoutToLogin('logout');
   };
 
   return (
@@ -203,6 +222,36 @@ function MyAccountForm({ user }: { user: CurrentUser }) {
           </Button>
         </div>
       </form>
+
+      <Separator />
+
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Log out</h3>
+        <p className="text-xs text-muted-foreground">You will need to log in again to access your messages.</p>
+      </div>
+
+      <div>
+        <Button type="button" variant="destructive" onClick={() => setLogoutOpen(true)}>
+          Log out
+        </Button>
+      </div>
+
+      <Dialog open={logoutOpen} onOpenChange={(open) => !loggingOut && setLogoutOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription>You will need to log in again to access your messages.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLogoutOpen(false)} disabled={loggingOut}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleLogout} disabled={loggingOut}>
+              Log out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

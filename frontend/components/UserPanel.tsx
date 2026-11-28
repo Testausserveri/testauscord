@@ -18,7 +18,7 @@ import { UserAvatar } from './UserAvatar';
 
 const STATUS_OPTIONS: PresenceStatus[] = ['ONLINE', 'IDLE', 'DND', 'INVISIBLE'];
 
-export function UserPanel() {
+export function UserPanel({ className, compact = false }: { className?: string; compact?: boolean }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { openProfile } = useProfilePopover();
@@ -47,7 +47,7 @@ export function UserPanel() {
   };
 
   return (
-    <SidebarFooter>
+    <SidebarFooter className={className}>
       <div className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -73,20 +73,22 @@ export function UserPanel() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          onClick={(event) => openProfile(user.id, event.currentTarget)}
-          title="Your profile"
-          className="flex min-w-0 flex-1 items-center rounded-md p-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{user.displayName ?? user.username}</p>
-            <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
-          </div>
-        </button>
-        <Button type="button" variant="ghost" size="icon" onClick={() => router.push('/channels/@me/settings')} title="Settings" aria-label="Settings">
-          <Settings />
-        </Button>
+        <div className={cn('flex min-w-0 flex-1 items-center gap-1 transition-opacity duration-200', compact && 'opacity-0')} inert={compact}>
+          <button
+            type="button"
+            onClick={(event) => openProfile(user.id, event.currentTarget)}
+            title="Your profile"
+            className="flex min-w-0 flex-1 items-center rounded-md p-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user.displayName ?? user.username}</p>
+              <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
+            </div>
+          </button>
+          <Button type="button" variant="ghost" size="icon" onClick={() => router.push('/channels/@me/settings')} title="Settings" aria-label="Settings">
+            <Settings />
+          </Button>
+        </div>
       </div>
     </SidebarFooter>
   );

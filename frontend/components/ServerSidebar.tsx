@@ -452,7 +452,7 @@ export function ServerSidebar() {
   const uncategorized = layout?.groups.find((group) => group.categoryId === null)?.channelIds ?? [];
 
   return (
-    <Sidebar style={state === 'expanded' ? { left: SERVER_RAIL_WIDTH } : undefined}>
+    <Sidebar style={{ left: state === 'expanded' ? SERVER_RAIL_WIDTH : `calc(${SERVER_RAIL_WIDTH}px - var(--sidebar-width))` }}>
       <SidebarHeader>
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
@@ -633,7 +633,7 @@ export function ServerSidebar() {
         )}
       </ContextMenu>
 
-      <UserPanel />
+      <UserPanel className="md:hidden" />
 
       <Dialog open={channelTarget !== null} onOpenChange={(open) => !open && closeChannelDialog()}>
         <DialogContent>
